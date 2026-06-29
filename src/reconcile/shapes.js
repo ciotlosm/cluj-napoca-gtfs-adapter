@@ -1,29 +1,33 @@
 /**
  * Shapes reconciliation.
  *
- * Seed shapes win. Tranzy fills missing shape_ids (typically the
- * shapes for routes the seed is missing entirely — see `neary-gtfs#13`,
- * `#15`). When neither has a shape for a pattern, the build proceeds
- * without `shape_dist_traveled` values being meaningful (haversine
- * fallback in `lib/timing.js`).
+ * **Tranzy is the primary catalog** (same rationale as routes.js and
+ * stops.js). Tranzy's shape_ids are the operator's authoritative ones;
+ * Transitous's mirror uses its own IDs and is often missing shapes
+ * for routes the Transitous upstream doesn't publish.
  *
- * Tranzy returns shape points as `{ shape_id, shape_pt_lat, shape_pt_lon,
- * shape_pt_sequence, shape_dist_traveled }`. We group by shape_id and
- * emit rows ordered by sequence.
+ * When both sources have a shape with the same `shape_id`, we
+ * preserve the Tranzy version (it's the live source). When only
+ * Transitous has the shape, we keep Transitous's. When only Tranzy
+ * has it, we use Tranzy's.
+ *
+ * When neither has a shape for a pattern, the build proceeds without
+ * `shape_dist_traveled` values being meaningful (haversine fallback
+ * in `lib/timing.js`).
+ *
+ * Tranzy returns shape points as `{ shape_id, shape_pt_lat,
+ * shape_pt_lon, shape_pt_sequence, shape_dist_traveled }`. We group
+ * by shape_id and emit rows ordered by sequence.
  */
 
 export function reconcileShapes({ seed, tranzy, warnings }) {
   /** @type {Map<string, Array<{lat:number, lon:number, dist?:number}>>} */
   const byShapeId = new Map();
 
-  // Seed (already grouped and sorted by lib/seed.js).
-  for (const [shapeId, pts] of seed.shapesById.entries()) {
-    if (!shapeId) continue;
-    if (!byShapeId.has(shapeId)) byShapeId.set(shapeId, []);
-    for (const p of pts) byShapeId.get(shapeId).push({ lat: p.lat, lon: p.lon });
-  }
-
-  // Tranzy fills.
+  // ── Step 1: Tranzy is the base catalog. Group points by shape_id,
+  // sort by upstream sequence. Tranzy's points are authoritative when
+  // both sources publish the same shape_id.
+  let tranzyShapeCount = 0;
   if (tranzy && Array.isArray(tranzy.shapes)) {
     /** @type {Map<string, Array<{lat, lon, seq, dist?}>>} */
     const grouped = new Map();
@@ -40,14 +44,37 @@ export function reconcileShapes({ seed, tranzy, warnings }) {
     }
     for (const [id, pts] of grouped.entries()) {
       pts.sort((a, b) => a.seq - b.seq);
-      if (byShapeId.has(id)) continue; // seed wins
       const cleaned = pts
         .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
         .map((p) => ({ lat: p.lat, lon: p.lon }));
       if (cleaned.length === 0) continue;
       byShapeId.set(id, cleaned);
-      warnings.push(`shape ${id} added from Tranzy (not in seed)`);
+      tranzyShapeCount++;
     }
+  }
+
+  // ── Step 2: Transitous fills shapes Tranzy doesn't publish. Use
+  // Transitous's shape_id as-is (no id remap — Transitous shapes are
+  // referenced only by their published shape_id, never by Transitous
+  // route_id downstream).
+  let transitousAdded = 0;
+  for (const [shapeId, pts] of seed.shapesById.entries()) {
+    if (!shapeId) continue;
+    if (byShapeId.has(shapeId)) continue;
+    const cleaned = [];
+    for (const p of pts) cleaned.push({ lat: p.lat, lon: p.lon });
+    if (cleaned.length === 0) continue;
+    byShapeId.set(shapeId, cleaned);
+    transitousAdded++;
+  }
+
+  // Build-log summary. The previous per-shape warnings (one line per
+  // new shape) were too noisy — single line per source now.
+  if (tranzyShapeCount > 0) {
+    warnings.push(`shapes: Tranzy primary catalog — ${tranzyShapeCount} shapes from Tranzy`);
+  }
+  if (transitousAdded > 0) {
+    warnings.push(`shapes: ${transitousAdded} Transitous-only shapes (not in Tranzy)`);
   }
 
   // Flatten to GTFS rows with fresh sequence numbers.

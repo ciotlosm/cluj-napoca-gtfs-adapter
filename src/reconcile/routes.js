@@ -1,26 +1,26 @@
 /**
  * Routes reconciliation.
  *
- * Transitous and Tranzy use **different route_id namespaces** for the
- * same physical routes — Transitous's `mdb-2121` mirror assigns its
- * own numeric IDs (`route_id=47` for `route_short_name='48'`); Tranzy
- * uses its own numeric IDs that don't line up. Cluj-Napoca alone has
- * ~107 routes that appear in BOTH sources with different `route_id`
- * values but the same `route_short_name`. If we matched by `route_id`
- * we'd emit ~107 duplicate routes and 107 misleading "added from
- * Tranzy" warnings.
+ * **Tranzy is the primary catalog.** Cluj-Napoca city hall promotes
+ * Tranzy as the authoritative live source for the network (per
+ * `docs/known-limitations.md` §3 and `https://ctpcj.ro/index.php/ro/
+ * despre-noi/open-data-tranzy`), so Tranzy is more up-to-date than
+ * the Transitous `mdb-2121` mirror: 168 vs 108 routes, with the gap
+ * mostly in newer metropolitan lines (M22–M81, etc.).
  *
- * Reconciliation strategy:
- *   1. Seed populates the canonical row for every route.
- *   2. Tranzy routes are matched against seed by `route_short_name`
- *      (the user-visible identifier — both sources agree on it). When
- *      matched, Tranzy fills in fresher fields (live color updates,
- *      headsigns) but the row's identity (`route_id`, primary fields)
- *      stays with the seed.
- *   3. Tranzy routes without a `route_short_name` match are added as
- *      new rows (their IDs are unique to Tranzy). Summarized, not per-row.
+ * Transitous is consulted only for **ID stability** — downstream apps
+ * (notably `neary`) key routes by `route_id`, and we don't want to
+ * break those references every time Tranzy's internal numeric IDs
+ * rotate. So when a route exists in BOTH sources:
+ *   - The published row uses **Transitous's `route_id`** (downstream
+ *     apps keep working without re-mapping).
+ *   - The row's content (color, long_name, etc.) is **Tranzy's** (the
+ *     live source — Tranzy's color/long_name override Transitous's).
  *
- * See `docs/reconciliation-rules.md` for the rationale.
+ * Routes only in Tranzy: included with Tranzy's `route_id`.
+ * Routes only in Transitous: included with Transitous's `route_id`.
+ *
+ * See `docs/reconciliation-rules.md` for the priority table.
  */
 
 import { parseCsv } from '../lib/csv.js';
@@ -40,58 +40,26 @@ export function reconcileRoutes({ seed, tranzy, warnings }) {
   /** @type {Map<string, any>} */
   const byRouteId = new Map();
   /** @type {Map<string, any>} */
+  const tranzyByShortName = new Map();
+  /** @type {Map<string, any>} */
   const seedByShortName = new Map();
   const routes = [];
 
-  // Seed wins — already curated by mdb-2121.
-  for (const r of seed.routes) {
-    if (!r.routeId) continue;
-    const row = {
-      route_id: r.routeId,
-      agency_id: '2', // CTP Cluj-Napoca
-      route_short_name: r.shortName ?? '',
-      route_long_name: r.longName ?? '',
-      route_type: r.type ? String(r.type) : '3',
-      route_color: (r.color ?? '').replace(/^#?/, '').toUpperCase(),
-      route_text_color: '',
-      route_desc: '',
-    };
-    if (!byRouteId.has(row.route_id)) {
-      byRouteId.set(row.route_id, row);
-      routes.push(row);
-      if (row.route_short_name) seedByShortName.set(row.route_short_name, row);
-    }
-  }
-
-  // Tranzy fills gaps. Match by route_short_name (NOT route_id —
-  // Transitous and Tranzy use different numeric ID namespaces for the
-  // same physical routes). When matched, Tranzy's fresher fields
-  // (live color updates, etc.) overwrite the seed's.
-  const tranzyAdditions = [];
-  let tranzyMergedIntoSeed = 0;
+  // ── Step 1: Tranzy is the base catalog. Every Tranzy route becomes
+  // a row keyed by its Tranzy route_id. We track them by short_name so
+  // the Transitous pass can look up the matching row for ID-stability
+  // upgrades.
+  let tranzyAdded = 0;
   if (tranzy && Array.isArray(tranzy.routes)) {
     for (const r of tranzy.routes) {
-      const shortName = (r.route_short_name ?? '').toString().trim();
-      if (shortName && seedByShortName.has(shortName)) {
-        // Same route, different ID namespaces — merge Tranzy's live data.
-        const seedRow = seedByShortName.get(shortName);
-        const tranzyColor = (r.route_color ?? '').toString().replace(/^#?/, '').toUpperCase();
-        if (tranzyColor) seedRow.route_color = tranzyColor;
-        const tranzyTextColor = (r.route_text_color ?? '').toString().replace(/^#?/, '').toUpperCase();
-        if (tranzyTextColor) seedRow.route_text_color = tranzyTextColor;
-        const tranzyLongName = (r.route_long_name ?? '').toString().trim();
-        if (tranzyLongName) seedRow.route_long_name = tranzyLongName;
-        tranzyMergedIntoSeed++;
-        continue;
-      }
       const id = r.route_id ? String(r.route_id) : null;
       if (!id) continue;
-      if (byRouteId.has(id)) continue; // already added
-      // Genuinely new route (no short_name match in seed).
+      if (byRouteId.has(id)) continue;
+      const shortName = (r.route_short_name ?? '').toString().trim();
       const color = (r.route_color ?? '').toString().replace(/^#?/, '').toUpperCase();
       const row = {
         route_id: id,
-        agency_id: '2',
+        agency_id: '2', // CTP Cluj-Napoca
         route_short_name: shortName,
         route_long_name: r.route_long_name ?? '',
         route_type: r.route_type ? String(r.route_type) : '3',
@@ -99,18 +67,75 @@ export function reconcileRoutes({ seed, tranzy, warnings }) {
         route_text_color: (r.route_text_color ?? '').toString().replace(/^#?/, '').toUpperCase(),
         route_desc: r.route_desc ?? '',
       };
-      tranzyAdditions.push(row);
       byRouteId.set(id, row);
       routes.push(row);
+      if (shortName) tranzyByShortName.set(shortName, row);
+      tranzyAdded++;
     }
   }
-  // Single-line summary for build logs. Detail goes to grep if anyone
-  // wants to audit "why is route X in the output?".
-  if (tranzyMergedIntoSeed > 0) {
-    warnings.push(`routes: merged ${tranzyMergedIntoSeed} Tranzy rows into seed by route_short_name (different route_id namespaces)`);
+
+  // ── Step 2: Transitous is the ID-stability overlay. For each
+  // Transitous route, if we already added the matching Tranzy row by
+  // short_name, swap the published route_id to Transitous's value so
+  // downstream apps (neary catalog, etc.) keep their references. Also
+  // fill in any fields Tranzy left empty (route_type, etc.).
+  let tranzyUpgradedToTransitousId = 0;
+  let transitousOnlyAdded = 0;
+  for (const r of seed.routes) {
+    if (!r.routeId) continue;
+    const shortName = (r.shortName ?? '').toString().trim();
+    if (shortName && tranzyByShortName.has(shortName)) {
+      // Shared route — upgrade the existing Tranzy row's route_id to
+      // Transitous's, and patch any missing fields from the seed.
+      const tranzyRow = tranzyByShortName.get(shortName);
+      const oldId = tranzyRow.route_id;
+      const newId = String(r.routeId);
+      if (oldId !== newId) {
+        byRouteId.delete(oldId);
+        tranzyRow.route_id = newId;
+        byRouteId.set(newId, tranzyRow);
+        tranzyUpgradedToTransitousId++;
+      }
+      if (!tranzyRow.route_type && r.type) tranzyRow.route_type = String(r.type);
+      if (!tranzyRow.route_color && r.color) {
+        tranzyRow.route_color = r.color.replace(/^#?/, '').toUpperCase();
+      }
+      if (!tranzyRow.route_long_name && r.longName) tranzyRow.route_long_name = r.longName;
+      // Remember the match so a Transitous-only fallback (no Tranzy)
+      // wouldn't double-add this short_name.
+      seedByShortName.set(shortName, tranzyRow);
+      continue;
+    }
+    // Transitous-only route (Tranzy doesn't have it).
+    if (byRouteId.has(r.routeId)) continue;
+    const row = {
+      route_id: String(r.routeId),
+      agency_id: '2',
+      route_short_name: shortName,
+      route_long_name: r.longName ?? '',
+      route_type: r.type ? String(r.type) : '3',
+      route_color: (r.color ?? '').replace(/^#?/, '').toUpperCase(),
+      route_text_color: '',
+      route_desc: '',
+    };
+    byRouteId.set(row.route_id, row);
+    routes.push(row);
+    if (shortName) seedByShortName.set(shortName, row);
+    transitousOnlyAdded++;
   }
-  if (tranzyAdditions.length > 0) {
-    warnings.push(`routes: added ${tranzyAdditions.length} Tranzy-only routes (not in seed by short_name)`);
+
+  // Build-log summary. One line per category — the per-row detail is
+  // already in routes.txt, so grepping is enough for auditing.
+  if (tranzyAdded > 0) {
+    const onlyInTranzy = tranzyAdded - tranzyUpgradedToTransitousId;
+    warnings.push(
+      `routes: Tranzy primary catalog — ${tranzyAdded} routes total` +
+      (onlyInTranzy > 0 ? `, ${onlyInTranzy} Tranzy-only` : '') +
+      (tranzyUpgradedToTransitousId > 0 ? `, ${tranzyUpgradedToTransitousId} shared with Transitous (re-keyed to Transitous route_id for downstream stability)` : ''),
+    );
+  }
+  if (transitousOnlyAdded > 0) {
+    warnings.push(`routes: ${transitousOnlyAdded} Transitous-only (Tranzy missing)`);
   }
 
   return { routes, byRouteId };

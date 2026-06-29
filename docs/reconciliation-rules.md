@@ -20,34 +20,47 @@ The adapter pulls from three independent sources for the same operator
 
 ## Priority table
 
-The rule is **"more curated wins for structure, more recent wins for
-labels, only CSV wins for actual times."** Read the **Rationale** column
-before changing a priority — it captures the *why*, not just the *what*.
+> [!IMPORTANT]
+> **Tranzy is the primary catalog.** Cluj-Napoca city hall promotes
+> Tranzy as the authoritative live source for the network (see
+> `https://ctpcj.ro/index.php/ro/despre-noi/open-data-tranzy`), so
+> Tranzy is more up-to-date than the Transitous `mdb-2121` mirror:
+> 168 vs 108 routes, 880+ vs 750 stops, fresher colors/headsigns,
+> newer metropolitan lines (M22–M81, etc.). Transitous is consulted
+> only for **ID stability** — downstream apps (notably `neary`) key
+> routes/stops by id, and we don't want to break those references
+> every time Tranzy's internal numeric IDs rotate.
+
+The general rule is: **Tranzy wins for content (live data), Transitous
+provides ID stability for shared entities, CSV wins for actual times.**
+Read the **Rationale** column before changing a priority — it captures
+the *why*, not just the *what*.
 
 | Field | Primary | Fallback 1 | Fallback 2 | Last resort | Rationale |
 |---|---|---|---|---|---|
 | `agency` | Transitous seed | — | — | synthesized from config | Why seed: `agency.txt` only needs one row; Transitous's curated single-agency row is canonical for Cluj. Why synthesized last resort: if both seed and Tranzy are silent, fall back to a `.env`-driven row so the output stays valid GTFS. |
-| `routes[].route_id` | Transitous seed | Tranzy | — | — | Why seed: Transitous IDs are stable, mdb-curated, and what downstream consumers already key on. Why Tranzy: routes CTP added since Transitous's last import. |
-| `routes[].route_short_name` | Transitous seed | Tranzy | CSV URL filename | — | Why seed: curated, stable. Why Tranzy: fills routes missing from seed. Why CSV last: the URL filename (`orar_35_lv.csv`) embeds the short name CTP publishes, but it's the weakest source — CSV can have typos or different casing than the network data. |
-| `routes[].route_long_name` | Transitous seed | Tranzy | CSV row 0 `route_long_name` | `route_short_name` | Why seed: curated long names. Why Tranzy: more recent renaming. Why CSV row 0: rows 0 of the CSV carries the literal long-name string (e.g. `"Zorilor - Marasti"`), which is what CTP uses on their own timetable pages. |
-| `routes[].route_type` | Transitous seed | Tranzy | 3 (bus default) | — | Why seed: Transitous's type codes follow GTFS spec. Why Tranzy: same. Why bus default: Cluj is overwhelmingly buses (88 of ~107 routes per `neary-gtfs#14`); if all upstream is missing the type, defaulting to bus is the least-wrong answer. |
-| `routes[].route_color` | Transitous seed | Tranzy | type-default palette | — | Why seed: Transitous inherits CTP's published color. Why Tranzy: same, when seed missing. Why type-default palette: when both upstream missing, fall back to CTP-type palette (bus=magenta, tram=green, trolleybus=blue — per `neary-gtfs#14`). |
-| `routes[].route_text_color` | Transitous seed | Tranzy | FFFFFF | — | Why seed: same logic as `route_color`. Why FFFFFF last: white-on-color is the safe default for signage contrast. |
-| `stops[].stop_id` | Transitous seed | Tranzy | — | — | Why seed: curated IDs are stable across imports. Why Tranzy: stops added after Transitous's last import. |
-| `stops[].stop_name` | Transitous seed | Tranzy | — | — | Why seed: curated stop names follow the operator's published signage. Why Tranzy: more recent renames. Why no CSV fallback: the CSV doesn't carry per-stop names. |
-| `stops[].stop_lat` / `stop_lon` | Transitous seed | Tranzy | — | — | Why seed: Transitous applies mdb-validated coordinate cleanup. Why Tranzy: GPS-surveyed coordinates; fills gaps. Why no third fallback: a stop without coordinates is unusable — drop rather than guess. |
-| `stops[].stop_code` | Transitous seed (sometimes Roman — see warning) | Tranzy | empty | — | Why seed: Transitous passes through CTP's signage code. Why Tranzy: same source, when seed missing. Why empty last resort: don't synthesize a code — most consumers look up by `stop_id` anyway, and the Roman-numeral quirk makes guessing hazardous. |
-| `shapes[].shape_id` | Transitous seed (mdb-2121) | Tranzy (`<route>_<dir>` convention) | synthesized from stop sequence | — | Why seed: Transitous's shape IDs are stable and what `neary-gtfs` already keys on. Why Tranzy: per-direction shapes (`35_0`, `35_1`) when seed missing — the convention FOL documents in `extract_direction_from_shape_id`. |
-| `shapes[].shape_pt_*` | Transitous seed | Tranzy | haversine between consecutive stops | — | Why seed: mdb-validated polyline. Why Tranzy: live polyline. Why haversine: when both upstream missing, fall back to straight-line interpolation between stops — gives at least a renderable route on the map. |
+| `routes[].route_id` | **Transitous seed (when shared)** else Tranzy | Tranzy for Tranzy-only | Transitous seed for Transitous-only | — | Why Transitous for shared: Transitous IDs are stable, mdb-curated, and what downstream consumers already key on — we re-key shared Tranzy rows to Transitous's `route_id`. Why Tranzy for Tranzy-only: routes CTP added since Transitous's last import. Why Transitous-only as its own case: legacy routes Transitous still carries but Tranzy has dropped. |
+| `routes[].route_short_name` | **Tranzy** | Transitous seed | CSV URL filename | — | Why Tranzy: CTP city-hall promotes Tranzy; live source for short names. Why Transitous: a small set of legacy routes Tranzy doesn't carry. Why CSV last: the URL filename (`orar_35_lv.csv`) embeds the short name CTP publishes, but it's the weakest source. |
+| `routes[].route_long_name` | **Tranzy** | Transitous seed | CSV row 0 `route_long_name` | `route_short_name` | Why Tranzy: live renaming source. Why seed: curated long names. Why CSV row 0: rows 0 of the CSV carries the literal long-name string (e.g. `"Zorilor - Marasti"`), which is what CTP uses on their own timetable pages. |
+| `routes[].route_type` | **Tranzy** | Transitous seed | 3 (bus default) | — | Why Tranzy: Tranzy's type codes follow GTFS spec. Why seed: same. Why bus default: Cluj is overwhelmingly buses (88 of ~107 routes per `neary-gtfs#14`); if all upstream is missing the type, defaulting to bus is the least-wrong answer. |
+| `routes[].route_color` | **Tranzy** | Transitous seed | type-default palette | — | Why Tranzy: Tranzy inherits CTP's published color live. Why seed: same source. Why type-default palette: when both upstream missing, fall back to CTP-type palette (bus=magenta, tram=green, trolleybus=blue — per `neary-gtfs#14`). |
+| `routes[].route_text_color` | **Tranzy** | Transitous seed | FFFFFF | — | Why Tranzy: same logic as `route_color`. Why FFFFFF last: white-on-color is the safe default for signage contrast. |
+| `stops[].stop_id` | **Tranzy** | Transitous seed | — | — | Why Tranzy: Tranzy covers more of the network (~880 stops vs Transitous's ~750). Why seed: the legacy few hundred stops Tranzy doesn't carry. Tranzy and Transitous use **different id namespaces**, so this is effectively "union of both" with Tranzy iterated first. |
+| `stops[].stop_name` | **Tranzy** | Transitous seed | — | — | Why Tranzy: live signage source. Why seed: curated names. Why no CSV fallback: the CSV doesn't carry per-stop names. |
+| `stops[].stop_lat` / `stop_lon` | **Tranzy** | Transitous seed | — | — | Why Tranzy: GPS-surveyed live coordinates. Why seed: mdb-validated coordinate cleanup. Why no third fallback: a stop without coordinates is unusable — drop rather than guess. |
+| `stops[].stop_code` | **Tranzy** (sometimes Roman — see warning) | Transitous seed | empty | — | Why Tranzy: live signage code. Why seed: same source. Why empty last resort: don't synthesize a code — most consumers look up by `stop_id` anyway, and the Roman-numeral quirk makes guessing hazardous. |
+| `shapes[].shape_id` | **Tranzy (`<route>_<dir>` convention)** | Transitous seed (mdb-2121) | synthesized from stop sequence | — | Why Tranzy: per-direction shapes (`35_0`, `35_1`) are the canonical operator routing geometry. Why seed: legacy shapes Tranzy doesn't carry. Why synthesized last: synthesize from `route_id`+`dir` so consumers always have something to look up. |
+| `shapes[].shape_pt_*` | **Tranzy** | Transitous seed | haversine between consecutive stops | — | Why Tranzy: live polyline. Why seed: mdb-validated polyline. Why haversine: when both upstream missing, fall back to straight-line interpolation between stops — gives at least a renderable route on the map. |
 | `trips[].trip_id` | **generated** — `${routeId}_${dir}_${serviceId}_${HHMM}` | — | — | — | Why generated (and why NOT claiming parity with the RT feed): the `neary` reconciler matches live observations to scheduled trips by `(routeId, directionId, tripStartMin)` with adaptive tolerance, **not** by `trip_id` equality — see `neary/src/lib/domain/reconcile.ts:5-14`. Static and RT trip_ids drift ~23% because each generator pulls from independent dispatch databases. The HHMM tail is the only structural requirement: it lets `neary`'s `parseLiveStartMin` extract start time from the suffix when `TripDescriptor.start_time` is missing. See `docs/known-limitations.md` §8. |
-| `trips[].route_id` | CSV's URL filename (matches Transitous `route_short_name`) | Transitous seed | Tranzy | — | Why CSV URL first: the CSV is the authoritative source for *which routes have published schedules* — without it, we wouldn't be generating this trip. The URL embeds `route_short_name` which we resolve to `route_id` via the seed. Why seed: if CSV's short name collides with multiple seed entries, the seed wins on disambiguation. |
+| `trips[].route_id` | CSV's URL filename (resolves to **Tranzy's** `route_id` first, then Transitous's) | Transitous seed | Tranzy | — | Why CSV URL first: the CSV is the authoritative source for *which routes have published schedules* — without it, we wouldn't be generating this trip. The URL embeds `route_short_name` which we resolve via the routes map (Tranzy primary, Transitous as id-stability overlay). |
 | `trips[].direction_id` | CSV column index (0 = first col, 1 = second col), **validated** against `in_stop_name` / `out_stop_name` headers in `src/reconcile/trips.js` | — | — | — | Why CSV column: each data row in the CSV has TWO columns of departures — column 0 is direction 0 (forward, toward `out_stop_name`), column 1 is direction 1 (return, toward `in_stop_name`). This is the only place direction info lives in the CSV. **Validation:** the reconciler cross-checks the CSV's terminal-name header against the resolved pattern's last stop; mismatch emits a warning and skips the CSV terminal as a headsign fallback (see `src/reconcile/trips.js` `terminalNamesMatch`). |
 | `trips[].service_id` | CSV URL key mapped via `serviceIdMap` (`lv → LV`, `s → S`, `d → D`, `ld → LD`) | — | — | — | Why CSV URL key: each CSV is downloaded with a service-day suffix in the URL (`..._lv.csv`, `..._s.csv`). That suffix, mapped through `serviceIdMap`, becomes the GTFS `service_id`. Most precise source — it's literally how we decided to download this CSV. |
-| `trips[].trip_headsign` | Tranzy (live) | Transitous seed | CSV `out_stop_name` (dir0) / `in_stop_name` (dir1) | `route_long_name` | Why Tranzy first (overriding the general "seed wins structure" rule): headsign is a *label*, not structural. Tranzy refreshes labels when CTP renames termini. Seed's headsign is stale if CTP changed it. Why CSV last resort: rows 3 and 4 of the CSV carry `in_stop_name` and `out_stop_name` — the terminal labels from CTP's published timetable (rows 0-4 are metadata; see `docs/csv-timetable-format.md`). |
-| `trips[].shape_id` | Tranzy `<route>_<dir>` | Transitous seed | synthesized `${route_id}_${dir}` | empty | Why Tranzy first (again "label" logic): per-direction shape is the canonical routing geometry — Tranzy's `<route>_<dir>` is the convention. Why seed: when Tranzy missing, seed's shape (if any) carries over. Why synthesized last: synthesize from `route_id`+`dir` so consumers always have something to look up. |
-| `stop_times[].stop_id` | pattern lookup (seed pattern OR Tranzy fallback per `patterns.js`) | — | — | — | Why pattern lookup: stop_times are generated by walking the resolved pattern's stop sequence, so `stop_id` comes from the pattern, not a separate source. |
+| `trips[].trip_headsign` | **Tranzy (live)** | Transitous seed | CSV `out_stop_name` (dir0) / `in_stop_name` (dir1) | `route_long_name` | Why Tranzy first: headsign is a *label*, not structural. Tranzy refreshes labels when CTP renames termini. Seed's headsign is stale if CTP changed it. Why CSV last resort: rows 3 and 4 of the CSV carry `in_stop_name` and `out_stop_name` — the terminal labels from CTP's published timetable (rows 0-4 are metadata; see `docs/csv-timetable-format.md`). |
+| `trips[].shape_id` | **Tranzy `<route>_<dir>`** | Transitous seed | synthesized `${route_id}_${dir}` | empty | Why Tranzy first: per-direction shape is the canonical routing geometry — Tranzy's `<route>_<dir>` is the convention. Why seed: when Tranzy missing, seed's shape (if any) carries over. Why synthesized last: synthesize from `route_id`+`dir` so consumers always have something to look up. |
+| `stop_times[].stop_id` | pattern lookup (Tranzy pattern first, seed fallback per `patterns.js`) | — | — | — | Why pattern lookup: stop_times are generated by walking the resolved pattern's stop sequence, so `stop_id` comes from the pattern, not a separate source. |
 | `stop_times[].arrival_time` / `departure_time` | **synthesized** via `computeStopTimes()` from CSV's first departure time + `timing.js` | — | — | — | Why synthesized: CSV gives us origin departure time only. The rest comes from `computeStopTimes()` which projects the origin time across the pattern using shape-aware distance + peak/offpeak/night speed buckets + dwell. This is the only way to produce per-stop times without authoritative schedule data. See `lib/timing.js`. |
-| `stop_times[].stop_sequence` | upstream's `stop_sequence` from the resolved pattern (Transitous seed or Tranzy) | re-numbered sequential index (fallback) | — | — | Why upstream's value: the resolved pattern carries the source's authoritative `stop_sequence` — when it's Tranzy's pattern, that's Tranzy's per-trip number; when Transitous's, that's Transitous's. Re-numbering with a sequential index would discard any non-contiguous numbering the operator uses (gaps for dwell-only stops, odd-numbered extras, etc.). Fallback to sequential index only if the pattern somehow lost the sequence (shouldn't happen with current sources). |
+| `stop_times[].stop_sequence` | upstream's `stop_sequence` from the resolved pattern (Tranzy first, Transitous seed fallback) | re-numbered sequential index (fallback) | — | — | Why upstream's value: the resolved pattern carries the source's authoritative `stop_sequence` — when it's Tranzy's pattern, that's Tranzy's per-trip number; when Transitous's, that's Transitous's. Re-numbering with a sequential index would discard any non-contiguous numbering the operator uses (gaps for dwell-only stops, odd-numbered extras, etc.). Fallback to sequential index only if the pattern somehow lost the sequence (shouldn't happen with current sources). |
+| `stop_times[].timepoint` | **synthesized** — always `'0'` (approximate) | — | — | — | Why `'0'`: our arrival/departure times come from `computeStopTimes()` projecting the CSV origin time across the shape — they're interpolated, not authoritative per-stop times. Per GTFS spec, `timepoint=0` is the canonical signal that times are approximate. See https://gtfs.org/schedule/reference/#stop_timestxt. |
 | `stop_times[].shape_dist_traveled` | `cumulativeShapeDistances()` from the chosen shape | — | — | — | Why from shape: GTFS spec defines this as distance along the trip's shape. We use `cumulativeShapeDistances()` (vendored from `neary-gtfs`) which projects each stop onto the polyline, with haversine fallback for off-shape stops. |
 | `calendar[].service_id` | `LV` / `S` / `D` / `LD` derived from CSV keys actually scraped | — | Tranzy (if 200) | synthesized | Why derived from CSV keys: each CSV we successfully parse confirms a service_id is active. We don't synthesize services we have no evidence for. Why Tranzy fallback: Tranzy's `/calendar` returns 404 for most agencies, but if it ever returns 200 we'd include those service_ids. |
 | `calendar[].start_date` / `end_date` | build date + `GTFS_CALENDAR_DAYS` (default 180) | Tranzy | today only | — | Why build date + window: GTFS schedules are forward-looking. We publish "today + 6 months" which covers any consumer's planning window without locking in dates we can't validate against the seed. Why Tranzy fallback: Tranzy has real service windows if it ever exposes them. |
@@ -57,18 +70,19 @@ before changing a priority — it captures the *why*, not just the *what*.
 ## Pattern-resolution algorithm
 
 For each `(route_id, direction_id)` pair that has CSV departures, we
-need a stop sequence (the "pattern") to anchor the schedule:
+need a stop sequence (the "pattern") to anchor the schedule. **Tranzy
+is primary**, Transitous seed is fallback:
 
 ```
 function patternFor(routeId, directionId):
+    tranzy = tranzyPatterns[routeId][directionId]   // Tranzy patterns
+    if tranzy exists:
+        return { stops: tranzy.stopSequence, shapeId: tranzy.shapeId, source: 'tranzy' }
+
     seed = seedPatterns[routeId][directionId]    // Transitous seed
     if seed exists:
         return { stops: seed.stopSequence, shapeId: seed.shapeId, source: 'seed' }
-    
-    tranzy = tranzyPatterns[routeId][directionId]   // Tranzy shapes
-    if tranzy exists:
-        return { stops: tranzy.stopSequence, shapeId: tranzy.shapeId, source: 'tranzy' }
-    
+
     // Last resort: synthesize by walking the stops along the shape from CSV's
     // in_stop_name/out_stop_name. This is what neary-gtfs#13 suggests as a
     // third option. For now we LOG a warning and skip.
@@ -76,9 +90,11 @@ function patternFor(routeId, directionId):
     return null
 ```
 
-The Tranzy fallback is the **whole point** of this adapter — it directly
-fixes `neary-gtfs#13` (25N direction=1) and `neary-gtfs#15` (M26 direction=1)
-by providing the missing stop sequences.
+The Tranzy-first choice is what fixes `neary-gtfs#13` (25N direction=1)
+and `neary-gtfs#15` (M26 direction=1) — both were missing from the
+Transitous seed but present in Tranzy. Earlier versions of this adapter
+used seed-first priority and silently dropped those directions; the
+flip moved those routes from "warnings + 0 trips" to "real schedule".
 
 ### Trip-headsign resolution
 
@@ -158,10 +174,19 @@ before merging the daily artifact:
 
 - **Reconciling agency_id** — Transitous and Tranzy both treat CTP as
   agency `2`; CSV has no agency concept. No reconciliation needed.
-- **Cross-source `route_id` remapping** — we use Transitous's `route_id`
-  everywhere; Tranzy's IDs that don't match are added as supplementary
-  routes (different `route_short_name`) rather than merged. This avoids
-  the mapping-table-trap that the user explicitly called out.
+- **Cross-source `stop_id` remapping** — Tranzy and Transitous use
+  *different* `stop_id` namespaces for the same physical stops. Rather
+  than build a brittle name+coords heuristic match, the reconciler
+  unions both catalogs (every Tranzy stop + every Transitous stop with
+  no matching id in Tranzy). Downstream apps consuming by `stop_id`
+  should expect both namespaces to appear; in practice each consumer
+  uses only one (neary uses Transitous, the live vehicle feed uses
+  Tranzy).
+- **Cross-source `route_id` remapping for shared routes** — we
+  re-publish Transitous's `route_id` for shared routes (so `neary`
+  catalog references keep working), and keep Tranzy's `route_id` for
+  Tranzy-only routes. Tranzy's ID is **not** preserved on shared
+  routes — using Transitous's stable ID is the deliberate choice.
 - **`feed_publisher_name`** — always `cluj-napoca-gtfs-adapter`. We do
   not impersonate Transitous or CTP.
 - **License attribution** — preserved as-is from the seed (`CC-BY` to

@@ -17,17 +17,27 @@ PWA can consume it like any other GTFS source.
 
 CTP doesn't expose its schedule data through one canonical GTFS feed:
 
-- The Transitous Cluj mirror (`mdb-2121`) is the closest thing to
-  authoritative, but updates irregularly (sometimes weeks stale — see
+- **Tranzy.ai** is the live network state — 168 routes, 880+ stops,
+  per-direction shapes (`<route>_<dir>` convention), up-to-date
+  colors/headsigns. CTP city hall officially promotes Tranzy as their
+  open-data partner (see `https://ctpcj.ro/index.php/ro/despre-noi/
+  open-data-tranzy`). Tranzy carries stop ordering but **not** arrival
+  times (`/stop_times` has no `arrival_time`).
+- **Transitous** mirror (`mdb-2121`) is the curated secondary catalog —
+  108 routes, 750 stops, mdb-validated coordinates and IDs. Updates
+  irregularly (sometimes weeks stale — see
   [`neary-gtfs#1`](https://github.com/ciotlosm/neary-gtfs/issues/1)).
-- Tranzy.ai exposes the live network state but only carries stop
-  ordering, not departure times (`/stop_times` has no `arrival_time`).
-- CTP's own CSVs carry the real departure times per route per service
-  day but CTP doesn't publish them for every route (~63 of ~298 missing —
-  same `neary-gtfs#1`).
+  Used by this adapter mainly for **ID stability**: downstream apps
+  (notably `neary`) already key routes by Transitous `route_id`, and
+  re-keying shared routes to Tranzy's internal IDs would break every
+  catalog reference.
+- **CTP CSV timetables** carry the real departure times per route per
+  service day. CTP doesn't publish them for every route (~63 of ~298
+  missing — same `neary-gtfs#1`).
 
 The three sources are complementary. Reconciliation is the only way to
-get a feed that's *complete*, *fresh*, and *correct*.
+get a feed that's *complete*, *fresh*, and *correct* — and *stable in
+the IDs downstream apps already key on*.
 
 ## Data flow
 
@@ -121,21 +131,34 @@ Two functions:
 
 ### `src/reconcile/`
 
-The pipeline that produces the final output GTFS structure. Order:
+The pipeline that produces the final output GTFS structure. **Tranzy
+is the primary catalog** (see priority table in
+[`docs/reconciliation-rules.md`](./reconciliation-rules.md)); Transitous
+seed is the ID-stability overlay. Order:
 
-1. `seedPatterns(routeId, dir)` — first trip's stop sequence from the seed,
-   or null. One lookup per (route, dir) needed.
-2. `tranzyPatterns(routeId, dir)` — Tranzy's pattern via shape_id
-   `<route>_<dir>`. First trip's stop sequence from Tranzy, or null.
+1. `tranzyPatterns(routeId, dir)` — first trip's stop sequence from
+   Tranzy, or null. Primary pattern source.
+2. `seedPatterns(routeId, dir)` — same lookup against Transitous seed.
+   Fallback when Tranzy doesn't have this direction (the case behind
+   `neary-gtfs#13` 25N dir=1 was solved when Tranzy got the direction;
+   the case behind `#15` M26 dir=1 was solved by Tranzy having it).
 3. `csvDepartures(routeId)` — map of `(dir, serviceId) → HH:MM[]`.
-4. `routes.js` — merge routes from seed + Tranzy (dedup on route_id).
-5. `stops.js` — merge stops from seed + Tranzy.
-6. `shapes.js` — merge shape points from seed + Tranzy.
-7. `trips.js` — for each CSV departure, pick the pattern, generate
-   `trip_id` (format `${route}_${dir}_${serviceId}_${HHMM}`), write trip
-   row. Validates the CSV's `in_stop_name` / `out_stop_name` header
-   against the pattern's terminal stops and skips the CSV terminal as
-   a headsign fallback on mismatch (see `src/reconcile/trips.js` `terminalNamesMatch`).
+4. `routes.js` — Tranzy first (all Tranzy rows included with Tranzy
+   `route_id`); Transitous overlay re-keys shared routes (matched by
+   `route_short_name`) to Transitous's `route_id` for downstream
+   stability, and adds Transitous-only routes.
+5. `stops.js` — Tranzy first (~880 stops); Transitous fills the legacy
+   few hundred Transitous has but Tranzy doesn't.
+6. `shapes.js` — Tranzy first (per-direction shapes); Transitous fills
+   legacy shapes.
+7. `trips.js` — for each CSV departure, pick the pattern (Tranzy
+   primary), generate `trip_id` (format
+   `${route}_${dir}_${serviceId}_${HHMM}`), write trip row. Validates
+   the CSV's `in_stop_name` / `out_stop_name` header against the
+   pattern's terminal stops and skips the CSV terminal as a headsign
+   fallback on mismatch (see `src/reconcile/trips.js`
+   `terminalNamesMatch`). Emits `timepoint='0'` on every stop_time row
+   since our arrival/departure times are interpolated, not authoritative.
 8. `stop-times.js` — for each trip, compute per-stop arrival/departure
    times via `computeStopTimes()` from `lib/timing.js`.
 9. `calendar.js` — service-id → weekday-bool map from CSV keys scraped.
