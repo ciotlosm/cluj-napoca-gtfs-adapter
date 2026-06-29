@@ -87,7 +87,12 @@ export function reconcileTripsAndStopTimes(input) {
             const lat = parseFloat(stop.stop_lat);
             const lon = parseFloat(stop.stop_lon);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-            return { stopId: stop.stop_id, lat, lon, name: stop.stop_name };
+            // Preserve the source's stop_sequence — it's the authoritative
+            // value from the upstream GTFS source (Transitous seed or
+            // Tranzy). Re-numbering with a sequential index would discard
+            // any non-contiguous numbering the operator uses (e.g. gaps
+            // for dwell-only stops, odd-numbered extras).
+            return { stopId: stop.stop_id, sequence: s.sequence, lat, lon, name: stop.stop_name };
           })
           .filter(Boolean);
         if (orderedStops.length === 0) {
@@ -148,7 +153,10 @@ export function reconcileTripsAndStopTimes(input) {
               arrival_time: formatGtfsTime(arrivals[k]),
               departure_time: formatGtfsTime(stopDeps[k]),
               stop_id: orderedStops[k].stopId,
-              stop_sequence: String(k),
+              // Use the upstream source's stop_sequence (Transitous
+              // seed or Tranzy) — not a re-numbered index. See comment
+              // on orderedStops above.
+              stop_sequence: String(orderedStops[k].sequence ?? k),
               shape_dist_traveled: shapeDistTraveledM[k] != null ? String(shapeDistTraveledM[k]) : '',
             });
           }

@@ -99,6 +99,33 @@ describe('reconcile', () => {
     }
   });
 
+  it('stop_times preserves stop_sequence from the upstream pattern (seed or Tranzy)', () => {
+    // Seed fixture has sequences 0, 1, 2 for route 35 dir=0 trips
+    // (stops A, B, C). The reconciler must inherit those numbers,
+    // not re-number with a fresh sequential index — re-numbering would
+    // discard any non-contiguous numbering the operator uses.
+    const { files } = reconcile({ seed, tranzy: null, csv, options: { buildDate: new Date('2026-06-29') } });
+    const lines = files['stop_times.txt'].split('\n').slice(1).filter(Boolean);
+    /** @type {Map<string, Array<{stopId: string, sequence: number}>>} */
+    const byTrip = new Map();
+    for (const line of lines) {
+      const cols = line.split(',');
+      const tripId = cols[0];
+      const seq = Number(cols[4]);
+      const stopId = cols[3];
+      if (!byTrip.has(tripId)) byTrip.set(tripId, []);
+      byTrip.get(tripId).push({ stopId, sequence: seq });
+    }
+    // For trip 35_0_LV_0600 (35 dir=0 LV service at 06:00), the stops
+    // are A, B, C with sequences 0, 1, 2 from the seed.
+    const trip0600 = byTrip.get('35_0_LV_0600');
+    expect(trip0600).toBeDefined();
+    const seqByStop = Object.fromEntries(trip0600.map((s) => [s.stopId, s.sequence]));
+    expect(seqByStop.A).toBe(0);
+    expect(seqByStop.B).toBe(1);
+    expect(seqByStop.C).toBe(2);
+  });
+
   it('calendar.txt has LV, S, D entries (services we actually scraped)', () => {
     const { files } = reconcile({ seed, tranzy: null, csv, options: { buildDate: new Date('2026-06-29') } });
     expect(files['calendar.txt']).toMatch(/^LV,/m);
