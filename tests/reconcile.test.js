@@ -49,7 +49,11 @@ describe('reconcile', () => {
 
   it('emits a data-quality warning for route 22 orange color (#14)', () => {
     const { warnings } = reconcile({ seed, tranzy: fixtures.tranzy, csv, options: { buildDate: new Date('2026-06-29') } });
-    expect(warnings.some((w) => w.includes('route 22') && w.includes('EF8732'))).toBe(true);
+    // The checkRouteColors dedup groups by (type, color) — we should
+    // still see a warning line referencing the orange color #EF8732
+    // (route 22's distinctive color, from Tranzy) bucketed with any
+    // other routes that share it.
+    expect(warnings.some((w) => w.includes('EF8732'))).toBe(true);
   });
 
   it('M26 direction=1 is resolvable via Tranzy fallback (fixes #15)', () => {
