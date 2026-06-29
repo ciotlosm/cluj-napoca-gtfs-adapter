@@ -213,6 +213,7 @@ export class TranzyClient {
    * @returns {Promise<{routes: any[], stops: any[], trips: any[], shapes: any[], stop_times: any[], calendar: any[]}>}
    */
   async fetchAll() {
+    console.log(`[tranzy] fetching all endpoints from ${this.baseUrl} (agency=${this.agencyId})`);
     const endpoints = [
       ['routes', () => this.getRoutes()],
       ['stops', () => this.getStops()],
@@ -230,6 +231,13 @@ export class TranzyClient {
         result[key] = [];
       }
     }
+    console.log(
+      `[tranzy] fetched ${result.routes.length} routes, ` +
+      `${result.stops.length} stops, ` +
+      `${result.trips.length} trips, ` +
+      `${result.shapes.length} shapes, ` +
+      `${result.stop_times.length} stop_times`,
+    );
     return result;
   }
 }
