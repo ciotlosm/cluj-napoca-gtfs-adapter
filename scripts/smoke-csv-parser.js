@@ -169,6 +169,8 @@ async function main() {
   let totalNetworkError = 0;
   let totalFreq = 0;
   const routesWithNoCsv = [];
+  /** @type {Array<{route: string, wholeLine: boolean}>} */
+  const notFoundRoutes = [];
   for (const [shortName, s] of stats.entries()) {
     totalOk += s.ok;
     totalNotFound += s.notFound;
@@ -176,13 +178,26 @@ async function main() {
     totalHttpError += s.httpError;
     totalNetworkError += s.networkError;
     totalFreq += s.frequency;
-    // Route has "no CSV" when ALL service-day fetches failed (no ok
-    // results and at least one failure — could be all 404, all WAF,
-    // a mix, or one catastrophic network error on every retry).
-    if (s.ok === 0 && (s.notFound + s.wafBlocked + s.httpError + s.networkError) > 0) {
+    // Cross-reference each 404 against the route's own success rate:
+    //   - Route has ≥1 successful CSV → the 404s are weekend / partial
+    //     service-day gaps (acceptable, CTP genuinely doesn't publish
+    //     CSVs for days the route doesn't run). Cross-referencing via
+    //     CTP's HTML pages confirmed this for route 22: the page says
+    //     "Sâmbăta: Nu circulă. Duminica: Nu circulă." → 404 is the
+    //     right response.
+    //   - Route has 0 successful CSVs → every 404 on this route is a
+    //     whole-line gap (real catalog issue). The Tranzy fallback
+    //     catches this in the build, but it's still worth flagging
+    //     because operators expect published CSVs for their lines.
+    const wholeLine = s.ok === 0;
+    if (s.notFound > 0) notFoundRoutes.push({ route: shortName, wholeLine });
+    if (wholeLine && (s.notFound + s.wafBlocked + s.httpError + s.networkError) > 0) {
       routesWithNoCsv.push(shortName);
     }
   }
+  const expectedWeekend404s = notFoundRoutes.filter((d) => !d.wholeLine);
+  const wholeLine404s = notFoundRoutes.filter((d) => d.wholeLine);
+
   const totalFetches = totalOk + totalNotFound + totalWafBlocked + totalHttpError + totalNetworkError;
 
   console.log('');
@@ -196,6 +211,24 @@ async function main() {
   console.log(`  HTTP error:            ${totalHttpError}    (non-404 server error)`);
   console.log(`  Network error:         ${totalNetworkError}    (timeout/connect refused)`);
   console.log('');
+  console.log('404 classification:');
+  if (expectedWeekend404s.length === 0 && wholeLine404s.length === 0) {
+    console.log('  (no 404s)');
+  } else {
+    if (expectedWeekend404s.length > 0) {
+      const sample = expectedWeekend404s.length <= 5
+        ? expectedWeekend404s.map((d) => d.route).join(', ')
+        : `${expectedWeekend404s.slice(0, 5).map((d) => d.route).join(', ')}, ... and ${expectedWeekend404s.length - 5} more`;
+      console.log(`  Expected (route has weekday CSV — 404 is weekend/no-service):  ${expectedWeekend404s.length} routes [${sample}]`);
+    }
+    if (wholeLine404s.length > 0) {
+      const sample = wholeLine404s.length <= 10
+        ? wholeLine404s.map((d) => d.route).join(', ')
+        : `${wholeLine404s.slice(0, 10).map((d) => d.route).join(', ')}, ... and ${wholeLine404s.length - 10} more`;
+      console.log(`  ⚠ WHOLE-LINE gaps (no CSV at all for this route):                ${wholeLine404s.length} routes [${sample}]`);
+    }
+  }
+  console.log('');
   console.log('Route coverage:');
   if (routesWithNoCsv.length > 0 && routesWithNoCsv.length <= 20) {
     console.log(`  ${stats.size - routesWithNoCsv.length} of ${stats.size} routes have ≥1 CSV. No CSV at all: ${routesWithNoCsv.join(', ')} (CTP doesn't publish).`);
@@ -207,6 +240,28 @@ async function main() {
   console.log('');
   console.log(`Frequency annotations found:   ${totalFreq}`);
   console.log(`Unrecognized cells:            ${unrecognizedCount}`);
+
+  // Fail on whole-line 404s (real catalog gaps). Expected weekend /
+  // service-day 404s are informational — routes that genuinely don't
+  // run on weekends correctly return 404 from CTP (cross-referenced
+  // against the operator's HTML pages — e.g. route 22's page says
+  // "Sâmbăta: Nu circulă. Duminica: Nu circulă.").
+  // Opt-out: SMOKE_ALLOW_WHOLE_LINE_404S=1 (only if you intentionally
+  // want to ship without CSV coverage for some routes).
+  const allowWholeLine = env.SMOKE_ALLOW_WHOLE_LINE_404S === '1';
+  if (!allowWholeLine && wholeLine404s.length > 0) {
+    console.error('');
+    console.error(`[smoke:csv] FAIL: ${wholeLine404s.length} WHOLE-LINE 404(s) — route(s) have ZERO CSV coverage:`);
+    for (const d of wholeLine404s.slice(0, 20)) {
+      console.error(`  - ${d.route}`);
+    }
+    if (wholeLine404s.length > 20) {
+      console.error(`  ... and ${wholeLine404s.length - 20} more`);
+    }
+    console.error('  The Tranzy /trips fallback catches these for trip structure, but no authoritative CSV times are published.');
+    console.error('  Set SMOKE_ALLOW_WHOLE_LINE_404S=1 to skip this check.');
+    exit(3);
+  }
 
   if (unrecognizedCount > 0) {
     console.error('');
