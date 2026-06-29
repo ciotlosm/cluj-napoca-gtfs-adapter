@@ -9,7 +9,7 @@
 import { createWriteStream } from 'node:fs';
 import { mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 
 /**
  * @param {Record<string, string>} files  output of `reconcile().files`
@@ -20,7 +20,7 @@ export async function writeGtfsZip(files, outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
   return new Promise((resolve, reject) => {
     const out = createWriteStream(outPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     out.on('close', () => resolve({ sizeBytes: archive.pointer() }));
     archive.on('error', reject);
     archive.pipe(out);

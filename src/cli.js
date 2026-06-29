@@ -18,7 +18,9 @@
  */
 
 import { argv, exit, env } from 'node:process';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 import { TranzyClient } from './sources/tranzy.js';
@@ -198,11 +200,8 @@ function main() {
   }
   if (cmd === '-v' || cmd === '--version') {
     // Read version from package.json relative to this file.
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join: pj } = await import('node:path');
     const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(pj(here, '..', 'package.json'), 'utf8'));
+    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8'));
     console.log(`cluj-napoca-gtfs-adapter ${pkg.version}`);
     return;
   }

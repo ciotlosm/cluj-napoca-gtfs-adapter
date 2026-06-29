@@ -4,13 +4,13 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { fixtures } from './index.js';
 
 export async function buildFixtureSeedZip(outPath) {
   return new Promise((resolve, reject) => {
     const out = createWriteStream(outPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     out.on('close', resolve);
     archive.on('error', reject);
     archive.pipe(out);
