@@ -1,0 +1,81 @@
+name: "Daily build → binaries"
+
+# Builds output/cluj-napoca.gtfs.zip and pushes it to the `binaries` branch.
+# Triggers: cron at 00:30 UTC (after Transitous's ~00:00 UTC import)
+# + manual workflow_dispatch + push to main.
+
+on:
+  schedule:
+    - cron: '30 0 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build feed
+        run: node src/cli.js build
+        env:
+          TRANZY_API_KEY: ${{ secrets.TRANZY_API_KEY }}
+          TRANZY_AGENCY_ID: '2'
+
+      - name: Publish to binaries branch
+        run: |
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          DIR="/tmp/binaries"
+
+          if ! git clone --single-branch --branch binaries --depth 1 "$REMOTE" "$DIR" 2>/dev/null; then
+            # First-ever build: create as orphan.
+            git clone --depth 1 "$REMOTE" "$DIR"
+            cd "$DIR"
+            git checkout --orphan binaries
+            git rm -rf . >/dev/null
+            cd -
+          fi
+
+          mkdir -p "$DIR/output"
+          cp output/cluj-napoca.gtfs.zip "$DIR/output/cluj-napoca.gtfs.zip"
+
+          cd "$DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+          else
+            git commit -m "pipeline: $DATE"
+            git push origin binaries
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke-test the published URL (next day)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          URL="https://cdn.jsdelivr.net/gh/ciotlosm/cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip"
+          echo "Validating $URL"
+          curl -sI "$URL" | head -5
