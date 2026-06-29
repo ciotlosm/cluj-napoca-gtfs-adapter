@@ -99,9 +99,13 @@ async function cmdBuild() {
   });
 
   if (warnings.length > 0) {
-    console.warn(`[reconcile] ${warnings.length} warning(s):`);
-    for (const w of warnings.slice(0, 20)) console.warn(`  - ${w}`);
-    if (warnings.length > 20) console.warn(`  ... and ${warnings.length - 20} more`);
+    const { emitGroupedWarnings } = await import('./lib/log-severity.js');
+    const counts = emitGroupedWarnings(warnings);
+    console.log(
+      `[reconcile] ${warnings.length} total — ${counts.info} info, ${counts.warn} warn, ${counts.error} error`,
+    );
+  } else {
+    console.log('[reconcile] 0 warnings');
   }
 
   const outPath = join(outputDir, outputName);
@@ -166,8 +170,11 @@ async function cmdReconcileDryRun() {
   console.log(`  stop_times:   ${stats.stopTimes}`);
   console.log(`  calendar:     ${stats.calendarServices} service(s)`);
   if (warnings.length > 0) {
-    console.log(`\n  warnings (${warnings.length}):`);
-    for (const w of warnings) console.log(`    - ${w}`);
+    const { emitGroupedWarnings } = await import('./lib/log-severity.js');
+    const counts = emitGroupedWarnings(warnings);
+    console.log(
+      `\n  ${warnings.length} total — ${counts.info} info, ${counts.warn} warn, ${counts.error} error`,
+    );
   } else {
     console.log('\n  no warnings.');
   }
