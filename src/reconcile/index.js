@@ -3,7 +3,7 @@
  * final in-memory GTFS structure, ready for the zip writer.
  *
  * Pipeline:
- *   1. seedPatterns  (src/sources/transitous.js)
+ *   1. seedPatterns  (src/sources/transitous/index.js)
  *   2. tranzyPatterns (this module's Tranzy-pattern extraction)
  *   3. routes        (src/reconcile/routes.js)
  *   4. stops         (src/reconcile/stops.js)

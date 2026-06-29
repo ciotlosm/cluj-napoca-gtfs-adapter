@@ -39,9 +39,9 @@
 
 import { argv, env, exit } from 'node:process';
 
-import { loadTransitousSeed } from '../src/sources/transitous.js';
-import { TranzyClient } from '../src/sources/tranzy.js';
-import { parseCtpCsv, buildCtpCsvUrl, CSV_SERVICE_KEYS } from '../src/sources/ctp-csv.js';
+import { loadTransitousSeed } from '../src/sources/transitous/index.js';
+import { TranzyClient } from '../src/sources/tranzy/index.js';
+import { parseCtpCsv, buildCtpCsvUrl, CSV_SERVICE_KEYS } from '../src/sources/ctp-csv/index.js';
 import { USER_AGENT } from '../src/lib/seed.js';
 import { ensureBuildInputDirs, writeCsvBody, writeStatusManifest } from '../src/lib/build-input.js';
 
@@ -159,7 +159,7 @@ async function main() {
         stats.set(key, { ok: 0, notFound: 0, wafBlocked: 0, httpError: 0, networkError: 0, frequency: 0, unknown: 0, samples: [] });
       }
       const stat = stats.get(key);
-      // Build URL via the canonical `buildCtpCsvUrl` from src/sources/ctp-csv.js
+      // Build URL via the canonical `buildCtpCsvUrl` from src/sources/ctp-csv/index.js
       // so URL-convention changes (e.g. CTP's no-space rule for "39 CREIC")
       // don't need to land in three places. We fetch manually here
       // (rather than calling fetchCtpCsv) so the smoke script can use
@@ -373,7 +373,7 @@ async function main() {
   if (unrecognizedCount > 0) {
     console.error('');
     ghaError('FAIL — unrecognized CSV cell(s); extend classifyCell()');
-    console.error(`${TAG} FAIL: ${unrecognizedCount} unrecognized cell(s) — extend classifyCell() in src/sources/ctp-csv.js`);
+    console.error(`${TAG} FAIL: ${unrecognizedCount} unrecognized cell(s) — extend classifyCell() in src/sources/ctp-csv/parser.js`);
     for (const s of unrecognizedSamples) {
       console.error(`  - ${s.route}: "${s.value}"`);
     }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { parseCtpCsv, fetchCtpCsv, fetchAllCsvSchedules } from '../src/sources/ctp-csv.js';
+import { parseCtpCsv, fetchCtpCsv, fetchAllCsvSchedules } from '../src/sources/ctp-csv/index.js';
 import { fixtures } from './fixtures/index.js';
 
 describe('parseCtpCsv', () => {

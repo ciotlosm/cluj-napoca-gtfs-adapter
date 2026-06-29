@@ -4,8 +4,8 @@
  * so we can cross-reference with CTP's published schedule list and
  * figure out which are real catalog gaps vs transient issues.
  */
-import { loadTransitousSeed } from '../src/sources/transitous.js';
-import { fetchCtpCsv } from '../src/sources/ctp-csv.js';
+import { loadTransitousSeed } from '../src/sources/transitous/index.js';
+import { fetchCtpCsv } from '../src/sources/ctp-csv/index.js';
 
 const seed = await loadTransitousSeed({ url: 'https://api.transitous.org/gtfs/ro_Cluj-Napoca.gtfs.zip' });
 const routes = seed.routes.map((r) => ({ shortName: r.shortName }));
@@ -25,7 +25,7 @@ const workers = Array.from({ length: concurrency }, async () => {
   while (queue.length > 0) {
     const t = queue.shift();
     if (!t) break;
-    const { buildCtpCsvUrl } = await import('../src/sources/ctp-csv.js');
+    const { buildCtpCsvUrl } = await import('../src/sources/ctp-csv/index.js');
     const url = buildCtpCsvUrl(t.route, t.svc);
     try {
       const res = await fetch(url, {

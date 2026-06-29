@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { reconcile } from '../src/reconcile/index.js';
-import { parseCtpCsv } from '../src/sources/ctp-csv.js';
+import { parseCtpCsv } from '../src/sources/ctp-csv/index.js';
 import { fixtures } from './fixtures/index.js';
 import { buildFixtureSeedMemory } from './fixtures/seed-builder.js';
 
@@ -68,31 +68,31 @@ describe('#15 — M26 frequency annotation fix', () => {
 
 describe('classifyCell (frequency annotation classification)', () => {
   it('classifies HH:MM as time', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('06:30')).toEqual({ type: 'time', value: '06:30' });
   });
 
   it('classifies HH:MM-HH:MM as range', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('05:05-22:40')).toEqual({ type: 'range', start: '05:05', end: '22:40' });
   });
 
   it('classifies N-Mmin as headway range', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('10-20min')).toEqual({
       type: 'headway', minSec: 600, maxSec: 1200, avgSec: 900,
     });
   });
 
   it('classifies Nmin as single headway', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('5min')).toEqual({
       type: 'headway', minSec: 300, maxSec: null, avgSec: 300,
     });
   });
 
   it('returns unknown for unparseable cells', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('TODO')).toEqual({ type: 'unknown' });
     expect(classifyCell('05:30-')).toEqual({ type: 'unknown' });
     expect(classifyCell('12:00-13:00-14:00')).toEqual({ type: 'unknown' });
@@ -105,22 +105,22 @@ describe('classifyCell (frequency annotation classification)', () => {
   // returned object so the parser can log them without counting them
   // as unrecognized cells. The trip itself is KEPT in the schedule.
   it('strips leading asterisk and preserves annotation on time cells', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('*04:40')).toEqual({ type: 'time', value: '04:40', annotation: '*' });
   });
 
   it('strips trailing asterisk and preserves annotation on time cells', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('22:50*')).toEqual({ type: 'time', value: '22:50', annotation: '*' });
   });
 
   it('strips double trailing asterisk (M39 Cluj-Due-skip marker)', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     expect(classifyCell('07:55**')).toEqual({ type: 'time', value: '07:55', annotation: '**' });
   });
 
   it('plain times do not get an annotation key', async () => {
-    const { classifyCell } = await import('../src/sources/ctp-csv.js');
+    const { classifyCell } = await import('../src/sources/ctp-csv/index.js');
     // toEqual distinguishes present-but-undefined from absent, so this
     // verifies the existing HH:MM behavior is unchanged.
     expect(classifyCell('06:30')).toEqual({ type: 'time', value: '06:30' });

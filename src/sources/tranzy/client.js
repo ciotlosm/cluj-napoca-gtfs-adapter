@@ -1,5 +1,8 @@
 /**
- * Tranzy.ai open-data HTTP client (Node port).
+ * Tranzy.ai open-data HTTP client.
+ *
+ * Pure network layer — returns raw JSON arrays from Tranzy's REST API.
+ * Conversion to GTFS-shaped structures happens in `./transform.js`.
  *
  * Authentication: ``X-API-KEY`` header with a key from https://tranzy.dev/accounts.
  * Agency scoping: ``X-AGENCY-ID`` header set to the numeric agency id (CTP Cluj = 2).

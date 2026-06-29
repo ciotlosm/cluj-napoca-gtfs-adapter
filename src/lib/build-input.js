@@ -7,7 +7,7 @@
  *     200-ok body to disk, and emits a status manifest at the end.
  *     This is the ONLY phase that touches upstream.
  *
- *   Phase 2 — build (src/cli.js build → src/sources/ctp-csv.js):
+ *   Phase 2 — build (src/cli.js build → src/sources/ctp-csv/index.js):
  *     Reads the CSV bodies from disk and the status manifest, then
  *     assembles the GTFS zip. NEVER fetches upstream.
  *
