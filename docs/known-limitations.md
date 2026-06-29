@@ -161,32 +161,50 @@ warning when a feed has multiple `agency.txt` rows with different
 timezones — we implement that check but do not act on it (single-agency
 feeds only).
 
-## 8. ~~`cluj-rt-feed.gtfs.ro` trip-id parity is a contract, not verified~~ — IMPLEMENTED in v0.2
+## 8. ~~`cluj-rt-feed.gtfs.ro` trip-id parity is a contract, not verified~~ — RE-EXAMINED in v0.2
 
-We generate trip IDs in the canonical CTP format
-`${route_id}_${dir}_${serviceId}_${seq}_${HHMM}` that matches what
-`neary#108` documents for GTFS-RT JOIN. We **do** have a live CI check
-that fetches the RT feed and asserts the pattern.
+> [!IMPORTANT]
+> **This was based on a wrong assumption.** Re-read after the user's
+> pushback: `neary/src/lib/domain/reconcile.ts` matches live
+> observations to scheduled trips by `(routeId, directionId,
+> tripStartMin)` — **not** by `trip_id` equality. The header comment
+> in that file is explicit:
+>
+> > *"trip_id equality is NOT used as a fast-path. Some operators
+> > publish static GTFS and GTFS-RT from independent build pipelines
+> > that happen to share the same `route_dir_service_run_HHMM` schema
+> > but populate `<run>_<HHMM>` from independent dispatch databases.
+> > Cluj sampling 2026-06-27 showed ~23% of live trip_ids drifted
+> > from their static counterparts by ±1 run number and/or ±a few
+> > minutes in HHMM."*
+>
+> The "parity" check is now a self-check on **our** output (not a
+> check against the RT feed). What we DO need to assert: our static
+> trip_ids end in `_HHMM` so neary's `parseLiveStartMin` can extract
+> start time from the suffix when `TripDescriptor.start_time` is
+> missing.
 
-Run locally:
+Trip-id format changed in v0.2: dropped the `seq` segment.
+
+| | Before (v0.1) | After (v0.2) |
+|---|---|---|
+| Format | `${route_id}_${dir}_${serviceId}_${seq}_${HHMM}` | `${route_id}_${dir}_${serviceId}_${HHMM}` |
+| `seq` segment | present (unused) | dropped |
+| `seq` used? | nowhere — dead weight | dropped |
+| Claimed to match RT | yes (false) | no — explicitly disclaimed |
+| HHMM tail required | yes | yes |
+| CI check | asserted parity vs live RT feed | asserts our own output ends in `_HHMM` |
+
+Run the self-check locally after building:
 
 ```bash
-RT_PARITY_URL=https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb \
-  npm run smoke:rt
+npm run build
+npm run smoke:trip-ids
 ```
 
-In CI, the step runs with `RT_PARITY_FAIL_ON_FETCH_ERROR=1` — the
-build fails if either (a) the RT feed is unreachable, or (b) any
-sampled `trip_id` doesn't match the canonical pattern. Both were
-silent-breakage vectors before this check existed.
-
-Default URL: `https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb`
-Override via `RT_PARITY_URL` env var. Sample size capped at 50 entities
-by default (`RT_PARITY_MAX_ENTITIES`).
-
-If the check fails, the error message prints up to 20 offending
-trip_ids and points at `makeTripId()` in `src/reconcile/trips.js` as
-the fix location.
+In CI, the step runs after `build` (so `output/cluj-napoca.gtfs.zip`
+exists). Failure prints up to 10 offending trip_ids and points at
+`makeTripId()` in `src/reconcile/trips.js` as the fix location.
 
 ## 9. README "limitations" section is the same as this doc
 

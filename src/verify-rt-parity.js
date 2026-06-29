@@ -1,121 +1,113 @@
 #!/usr/bin/env node
 /**
- * GTFS-Realtime trip-ID parity check.
+ * Trip-ID format self-check.
  *
- * Fetches the live GTFS-RT vehicle_positions feed (default
- * `cluj-rt-feed.gtfs.ro`) and asserts that the `trip_id` on each
- * VehiclePosition entity matches the canonical CTP format that this
- * adapter emits:
+ * Verifies that every trip_id in our generated `trips.txt` ends in
+ * `_HHMM` — the structural requirement that lets the `neary` app's
+ * `parseLiveStartMin` (src/lib/domain/reconcile.ts) fall back to
+ * extracting the scheduled start time from the trip_id suffix when
+ * `TripDescriptor.start_time` isn't populated.
  *
- *   /^[A-Za-z0-9]+_[01]_(LV|S|D|LD)_\d+_\d{4}$/
+ * NOTE: This is a SELF-check on OUR output, not a parity check
+ * against an external GTFS-RT feed. The neary reconciler does NOT
+ * match static and GTFS-RT trip_ids by equality — it re-maps live
+ * observations to scheduled trips by `(routeId, directionId,
+ * tripStartMin)` because static and RT trip_ids drift ~23% of the time
+ * (each generator pulls from independent dispatch databases; see
+ * neary/src/lib/domain/reconcile.ts:5-14).
  *
- * If even one trip_id violates the pattern, exit 1 — we want a loud CI
- * failure, not silent rot, if the upstream RT feed changes its ID
- * scheme. This is what would otherwise be a known-limitation silent
- * JOIN break in the neary app.
+ * In other words: a "parity check" against the live RT feed was
+ * checking a contract that doesn't exist. What we DO need to verify is
+ * that our own trip_ids are well-formed for downstream consumers
+ * (specifically: neary's HHMM tail fallback).
  *
  * Configuration:
- *   RT_PARITY_URL          URL of the vehicle_positions.pb feed
- *                          (default: https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb)
- *   RT_PARITY_FAIL_ON_FETCH_ERROR  if "1", exit 1 on network/parse error
- *                          (default: "0" — skip with warning)
- *   RT_PARITY_MAX_ENTITIES  cap on entities decoded (default: 50)
+ *   GTFS_ZIP_PATH          path to the produced zip (default:
+ *                          output/cluj-napoca.gtfs.zip relative to cwd)
+ *   TRIP_ID_HHMM_RE       override the regex (default: _\d{4}$ — last
+ *                          segment is 4 digits, no colon)
  *
  * Exit codes:
- *   0  all sampled trip_ids match the canonical pattern
- *   1  at least one mismatch — or fetch error when RT_PARITY_FAIL_ON_FETCH_ERROR=1
- *   2  configuration missing (RT_PARITY_URL not set, no default usable)
+ *   0  every trip_id ends with `_HHMM`
+ *   1  at least one trip_id doesn't match the pattern
+ *   2  zip not found / unreadable / trips.txt missing
  */
 
 import { argv, env, exit } from 'node:process';
+import { readFileSync, statSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
-const DEFAULT_URL = 'https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb';
-const CANONICAL_RE = /^[A-Za-z0-9]+_[01]_(LV|S|D|LD)_\d+_\d{4}$/;
+const DEFAULT_ZIP = join(process.cwd(), 'output', 'cluj-napoca.gtfs.zip');
+const HHMM_RE = /_\d{4}$/;
 
 async function main() {
-  const url = env.RT_PARITY_URL || DEFAULT_URL;
-  const failOnFetch = env.RT_PARITY_FAIL_ON_FETCH_ERROR === '1';
-  const maxEntities = parseInt(env.RT_PARITY_MAX_ENTITIES || '50', 10);
+  const zipPath = env.GTFS_ZIP_PATH || DEFAULT_ZIP;
+  const re = env.TRIP_ID_HHMM_RE ? new RegExp(env.TRIP_ID_HHMM_RE) : HHMM_RE;
 
-  console.log(`[rt-parity] fetching ${url}`);
-  let buf;
+  if (!existsSync(zipPath)) {
+    console.error(`[trip-ids] FATAL: ${zipPath} not found. Run 'npm run build' first.`);
+    exit(2);
+  }
+  console.log(`[trip-ids] inspecting ${zipPath} (${(statSync(zipPath).size / 1024).toFixed(1)} KB)`);
+
+  // Lazily require archiver's sibling for reading zips, OR fall back to
+  // shelling out to `unzip -p` (always available on macOS/Linux dev env).
+  let tripsTxt;
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'cluj-napoca-gtfs-adapter/0.1 (rt-parity-check)' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    buf = await res.arrayBuffer();
+    const mod = await import('node-stream-zip');
+    const zip = new mod.default({ file: zipPath, storeEntries: true });
+    tripsTxt = await zip.stream('trips.txt', (err, stream) => {
+      if (err) throw err;
+    }).then((stream) => new Promise((resolve, reject) => {
+      const chunks = [];
+      stream.on('data', (c) => chunks.push(c));
+      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      stream.on('error', reject);
+    }));
+    await zip.close();
   } catch (err) {
-    const msg = `[rt-parity] fetch failed: ${err.message || err}`;
-    if (failOnFetch) { console.error(msg); exit(1); }
-    console.warn(`${msg} — skipping (set RT_PARITY_FAIL_ON_FETCH_ERROR=1 to fail here)`);
-    exit(0);
+    // Fallback: shell out to unzip. Same as src/lib/seed.js does.
+    console.log(`[trip-ids] (node-stream-zip unavailable, falling back to unzip -p)`);
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync('unzip', ['-p', zipPath, 'trips.txt'], { encoding: 'utf8' });
+    if (r.status !== 0) {
+      console.error(`[trip-ids] FATAL: cannot read trips.txt from zip: ${r.stderr}`);
+      exit(2);
+    }
+    tripsTxt = r.stdout;
   }
 
-  let FeedMessage;
-  try {
-    const mod = await import('gtfs-realtime-bindings');
-    FeedMessage = mod.transit_realtime?.FeedMessage ?? mod.default?.FeedMessage ?? mod.FeedMessage;
-    if (!FeedMessage) throw new Error('FeedMessage not found in gtfs-realtime-bindings export');
-  } catch (err) {
-    console.error(`[rt-parity] could not load gtfs-realtime-bindings: ${err.message || err}`);
-    exit(1);
+  if (!tripsTxt) {
+    console.error(`[trip-ids] FATAL: trips.txt missing or empty in ${zipPath}`);
+    exit(2);
   }
 
-  let feed;
-  try {
-    feed = FeedMessage.decode(new Uint8Array(buf));
-  } catch (err) {
-    const msg = `[rt-parity] protobuf decode failed: ${err.message || err}`;
-    if (failOnFetch) { console.error(msg); exit(1); }
-    console.warn(`${msg} — skipping`);
-    exit(0);
-  }
+  const lines = tripsTxt.split('\n').slice(1).filter(Boolean);
+  const ids = lines.map((l) => l.split(',')[2]).filter(Boolean);
+  console.log(`[trip-ids] found ${ids.length} trip_ids in trips.txt`);
 
-  const sampled = [];
-  let tripIdCount = 0;
-  for (const entity of feed.entity ?? []) {
-    if (!entity.vehicle?.trip?.tripId) continue;
-    sampled.push(entity.vehicle.trip.tripId);
-    tripIdCount++;
-    if (sampled.length >= maxEntities) break;
-  }
-
-  if (sampled.length === 0) {
-    console.warn(`[rt-parity] no VehiclePosition entities with tripId found in feed (decoded ${tripIdCount} total) — skipping`);
-    exit(0);
-  }
-
-  const mismatches = sampled.filter((id) => !CANONICAL_RE.test(id));
-  console.log(
-    `[rt-parity] sampled ${sampled.length} trip_ids; ` +
-    `${mismatches.length} mismatch(es) against canonical pattern`,
-  );
+  const mismatches = ids.filter((id) => !re.test(id));
+  const freqAnchors = ids.filter((id) => id.includes('_FREQ_'));
 
   if (mismatches.length > 0) {
-    console.error(`[rt-parity] MISMATCH — these trip_ids would break GTFS-RT JOIN in the neary app:`);
-    for (const id of mismatches.slice(0, 20)) {
-      console.error(`  - ${id}`);
-    }
-    if (mismatches.length > 20) {
-      console.error(`  ... and ${mismatches.length - 20} more`);
-    }
-    console.error(`[rt-parity] fix: update makeTripId() in src/reconcile/trips.js to match the upstream format, then re-run.`);
+    console.error(`[trip-ids] FAIL: ${mismatches.length}/${ids.length} trip_ids do not end with _HHMM`);
+    for (const id of mismatches.slice(0, 10)) console.error(`  - ${id}`);
+    if (mismatches.length > 10) console.error(`  ... and ${mismatches.length - 10} more`);
+    console.error(`[trip-ids] fix: src/reconcile/trips.js makeTripId() should produce IDs ending in _HHMM`);
     exit(1);
   }
 
-  // Show a sample of compliant IDs for sanity.
-  console.log(`[rt-parity] sample compliant trip_ids:`);
-  for (const id of sampled.slice(0, 5)) console.log(`  ✓ ${id}`);
-  console.log(`[rt-parity] OK — all sampled trip_ids match the canonical pattern.`);
+  console.log(`[trip-ids] OK — all ${ids.length} trip_ids end with _HHMM`);
+  if (freqAnchors.length > 0) {
+    console.log(`[trip-ids] (${freqAnchors.length} are frequency anchors, format _FREQ_<HHMM>)`);
+  }
+  console.log(`[trip-ids] sample: ${ids.slice(0, 5).join(', ')}`);
   exit(0);
 }
 
 main().catch((err) => {
-  console.error(`[rt-parity] unexpected error: ${err.stack || err.message || err}`);
-  exit(1);
+  console.error(`[trip-ids] unexpected error: ${err.stack || err.message || err}`);
+  exit(2);
 });
 
-// Reference argv so unused-imports lints don't complain if we add flags later.
 void argv;

@@ -10,7 +10,7 @@
  *
  * Trip-id format: `${route_id}_${dir}_${serviceId}_FREQ_${HHMM_START}`
  * The `_FREQ_` marker is the convention — distinct from regular trip
- * ids (which encode the seq + dep time). The `HHMM_START` is the start
+ * ids (which encode the dep time). The `HHMM_START` is the start
  * of the operating window without colons, so a M26 dir0 LV anchor that
  * starts at 05:05 is `M26_0_LV_FREQ_0505`.
  *

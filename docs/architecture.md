@@ -132,7 +132,10 @@ The pipeline that produces the final output GTFS structure. Order:
 5. `stops.js` — merge stops from seed + Tranzy.
 6. `shapes.js` — merge shape points from seed + Tranzy.
 7. `trips.js` — for each CSV departure, pick the pattern, generate
-   `trip_id` in canonical CTP format, write trip row.
+   `trip_id` (format `${route}_${dir}_${serviceId}_${HHMM}`), write trip
+   row. Validates the CSV's `in_stop_name` / `out_stop_name` header
+   against the pattern's terminal stops and skips the CSV terminal as
+   a headsign fallback on mismatch (see `src/reconcile/trips.js` `terminalNamesMatch`).
 8. `stop-times.js` — for each trip, compute per-stop arrival/departure
    times via `computeStopTimes()` from `lib/timing.js`.
 9. `calendar.js` — service-id → weekday-bool map from CSV keys scraped.

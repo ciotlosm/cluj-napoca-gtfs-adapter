@@ -59,20 +59,24 @@ describe('reconcile', () => {
     expect(has).toBe(false);
   });
 
-  it('generates canonical CTP-format trip_ids matching cluj-rt-feed.gtfs.ro', () => {
+  it('generates trip_ids in ${route}_${dir}_${serviceId}_${HHMM} format', () => {
     const { files } = reconcile({ seed, tranzy: null, csv, options: { buildDate: new Date('2026-06-29') } });
     const tripLines = files['trips.txt'].split('\n').slice(1).filter(Boolean);
     expect(tripLines.length).toBeGreaterThan(0);
+    const tripIdRe = /^[A-Za-z0-9]+_[01]_(LV|S|D|LD)(?:_FREQ)?_\d{4}$/;
     for (const line of tripLines) {
       const cols = line.split(',');
       const tripId = cols[2];
-      // Pattern is one of:
-      //   <route_id>_<dir>_<serviceId>_<seq>_<HHMM>          (regular trips)
-      //   <route_id>_<dir>_<serviceId>_FREQ_<HHMM>            (frequency anchors)
-      // route_id may contain letters (M26, 25N).
-      expect(tripId).toMatch(
-        /^[A-Za-z0-9]+_[01]_(LV|S|D|LD)(?:_\d+_\d{4}|_FREQ_\d{4})$/,
-      );
+      // Format options:
+      //   <route>_<dir>_<serviceId>_<HHMM>          (regular trip)
+      //   <route>_<dir>_<serviceId>_FREQ_<HHMM>     (frequency anchor)
+      // route may contain letters (M26, 25N). HHMM is the tail
+      // (4 digits, no colon) — required for neary's parseLiveStartMin
+      // fallback. We do NOT claim parity with the live RT feed's IDs;
+      // the reconciler matches by (route, direction, time).
+      expect(tripId).toMatch(tripIdRe);
+      // Sanity: trip_id ends in 4 digits (HHMM tail).
+      expect(tripId).toMatch(/_\d{4}$/);
     }
   });
 

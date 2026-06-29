@@ -94,13 +94,37 @@ export function reconcileTripsAndStopTimes(input) {
           localWarnings.push(`All stops for ${routeShortName} dir=${dir} missing coords; dropping`);
           continue;
         }
+
+        // Validate CSV direction semantics: confirm the CSV's terminal
+        // name (in_stop_name for dir=1, out_stop_name for dir=0) matches
+        // the resolved pattern's last stop. If not, the CSV is using a
+        // different direction convention than we assume, OR the seed is
+        // stale on this route's terminals, OR CTP renamed a stop. Either
+        // way, trip times may be assigned to the wrong direction. Warn
+        // loudly so this surfaces in CI logs and the headsign fallback
+        // skips the (now-untrusted) CSV terminal name.
+        const expectedTerminalName = orderedStops[orderedStops.length - 1]?.name ?? null;
+        const csvTerminalName = dir === 0 ? csv.outStopName : csv.inStopName;
+        const csvTerminalTrustable = terminalNamesMatch(expectedTerminalName, csvTerminalName);
+        if (!csvTerminalTrustable) {
+          localWarnings.push(
+            `CSV direction validation: ${routeShortName} dir=${dir} terminal mismatch — ` +
+            `pattern last stop is "${expectedTerminalName}", CSV header says "${csvTerminalName}". ` +
+            `Trip times may be assigned to the wrong direction. ` +
+            `Skipping CSV terminal name as headsign fallback for this route.`,
+          );
+        }
+
         const shape = (pattern.shapeId && input.shapesById.get(pattern.shapeId)) || [];
 
-        const headsign = pattern.headsign || csvHeadsign || routeRow.route_long_name || routeShortName;
+        const headsign = pattern.headsign
+          || (csvTerminalTrustable ? csvHeadsign : null)
+          || routeRow.route_long_name
+          || routeShortName;
 
         for (let i = 0; i < departures.length; i++) {
           const depTime = departures[i];
-          const tripId = makeTripId(routeId, dir, serviceId, i, depTime);
+          const tripId = makeTripId(routeId, dir, serviceId, depTime);
           const shapeId = pattern.shapeId || `${routeId}_${dir}`;
           tripRows.push({
             route_id: routeId,
@@ -157,18 +181,48 @@ function findRouteByShortName(routesByRouteId, shortName) {
 }
 
 /**
- * Canonical CTP trip ID — matches `cluj-rt-feed.gtfs.ro` GTFS-RT format.
- * e.g. route 45, dir 1, LV service, 9th departure at 07:21 → `45_1_LV_9_0721`.
+ * Trip ID for this adapter's static feed.
+ *
+ * Format: `${routeId}_${dir}_${serviceId}_${HHMM}` — e.g. `M26_0_LV_0721`.
+ *
+ * Why this format (and why NOT the full `route_dir_service_run_HHMM`):
+ *
+ *   - **The reconciler in `neary` does NOT use trip_id for the JOIN.**
+ *     `neary/src/lib/domain/reconcile.ts` matches live observations to
+ *     scheduled trips by `(routeId, directionId, tripStartMin)` with
+ *     adaptive tolerance — explicitly noting that static and GTFS-RT
+ *     trip_ids drift ~23% of the time because Transitous, Tranzy, and
+ *     the GTFS-RT feed each generate trip_ids from independent
+ *     dispatch databases. See that file's header comment for context.
+ *
+ *   - **Neary's `parseLiveStartMin` does extract HHMM from trip_id
+ *     tails** as a fallback when `TripDescriptor.start_time` is
+ *     missing — `_(\d{3,4})$` regex on the suffix. So our static
+ *     trip_ids ending in `_HHMM` lets neary's fallback work if it
+ *     ever runs against our zip directly. The HHMM tail is the only
+ *     structural requirement we have to satisfy.
+ *
+ *   - **Neary's `resolveDirectionId` parses direction from RT trip_ids**
+ *     via `/^\d+_(\d)_/`. Our static trip_ids DON'T need to satisfy
+ *     this — neary doesn't try to extract direction from static IDs.
+ *
+ *   - **No "matches cluj-rt-feed" claim.** The RT feed uses Tranzy's
+ *     internal route_ids (e.g. `45` for route 45, `92` for M26) while
+ *     our static feed uses Transitous's IDs (the same `45` for route
+ *     45, but `M26` for M26). So even the same trip will have a
+ *     different prefix in static vs RT — by design.
+ *
+ * The `${seq}` (run number) we used to include was never consumed by
+ * anyone — dropped to keep trip_ids short and readable.
  *
  * @param {string} routeId
  * @param {number} dir
  * @param {string} serviceId
- * @param {number} seq
  * @param {string} depTime  "HH:MM" or "HH:MM:SS" or "HH+24:MM"
  */
-export function makeTripId(routeId, dir, serviceId, seq, depTime) {
+export function makeTripId(routeId, dir, serviceId, depTime) {
   const hhmm = depTime.replace(':', '').replace('+24', '');
-  return `${routeId}_${dir}_${serviceId}_${seq}_${hhmm}`;
+  return `${routeId}_${dir}_${serviceId}_${hhmm}`;
 }
 
 function hhmmToSeconds(hhmm) {
@@ -176,6 +230,22 @@ function hhmmToSeconds(hhmm) {
   const h = parts[0] ?? 0;
   const m = parts[1] ?? 0;
   return h * 3600 + m * 60;
+}
+
+/**
+ * Loose terminal-name match for CSV direction validation.
+ *
+ * CTP's CSV terminal names sometimes differ in casing, punctuation, or
+ * a trailing "Statie"/"Piața" vs the seed's "Stația"/"Piața". We
+ * normalize both to lowercase + digits only, then exact-match.
+ *
+ * Returns `true` when at least one side is empty (can't validate either
+ * way — caller should treat the CSV terminal as "trustable enough").
+ */
+function terminalNamesMatch(a, b) {
+  if (!a || !b) return true;
+  const norm = (s) => s.toString().toLowerCase().replace(/[^a-z0-9ăâîșț]/g, '');
+  return norm(a) === norm(b);
 }
 
 function formatGtfsTime(seconds) {

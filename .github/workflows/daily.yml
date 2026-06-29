@@ -48,18 +48,14 @@ jobs:
         # needs extending).
         run: npm run smoke:csv
 
-      - name: GTFS-RT trip-ID parity check
-        # Fetches the live RT feed and asserts trip_ids match our
-        # canonical pattern. Fails loudly if the upstream RT feed
-        # changes its ID scheme — that's what would silently break
-        # the neary app's GTFS-RT JOIN otherwise.
-        run: npm run smoke:rt
-        env:
-          RT_PARITY_URL: ${{ vars.RT_PARITY_URL }}
-          # Fail the build if the RT feed is unreachable OR its trip_ids
-          # don't match. CI-only — keep RT_PARITY_FAIL_ON_FETCH_ERROR=0
-          # locally so dev iteration isn't blocked by transient outages.
-          RT_PARITY_FAIL_ON_FETCH_ERROR: '1'
+      - name: Trip-ID format self-check
+        # Self-check on OUR output: every trip_id in trips.txt must end
+        # in _HHMM (4 digits) so neary's parseLiveStartMin fallback can
+        # extract start time from the suffix when TripDescriptor.start_time
+        # is missing. Catches accidental format regressions. We do NOT
+        # assert parity against the live RT feed — the neary reconciler
+        # matches by (route, direction, time), not trip_id.
+        run: npm run smoke:trip-ids
 
       - name: Publish to binaries branch
         run: |
