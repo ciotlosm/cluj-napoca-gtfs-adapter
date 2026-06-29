@@ -163,6 +163,7 @@ export function reconcileTranzyFallback({
         const generatedTripId = `${routeId}_${dir}_${serviceId}_NT${String(idx).padStart(3, '0')}`;
         tripRows.push({
           route_id: routeId,
+          service_id: serviceId,
           trip_id: generatedTripId,
           trip_headsign: headsign,
           direction_id: String(dir),
