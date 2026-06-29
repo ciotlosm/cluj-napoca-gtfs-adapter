@@ -24,6 +24,7 @@ import { reconcileCalendar, calendarToTxt } from './calendar.js';
 import { runDataQualityChecks } from './data-quality.js';
 import { tranzyPatternsByRouteDir, seedPatternsByRouteDir } from './patterns.js';
 import { reconcileTranzyFallback } from './tranzy-fallback.js';
+import { warnMsg } from '../lib/log-severity.js';
 
 /**
  * @param {{
@@ -109,7 +110,7 @@ export function reconcile({ seed, tranzy, csv, options = {} }) {
     buildDate: options.buildDate ?? new Date(),
   });
   if (unknownServiceIds.length > 0) {
-    warnings.push(`Unknown service_ids encountered: ${unknownServiceIds.join(', ')}`);
+    warnings.push(warnMsg(`Unknown service_ids encountered: ${unknownServiceIds.join(', ')}`));
   }
   // (Was: emitted unconditionally even when empty, leaving a trailing
   // colon in the build log. Now guarded by the length check above.)

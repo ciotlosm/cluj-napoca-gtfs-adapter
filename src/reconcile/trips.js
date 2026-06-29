@@ -14,6 +14,7 @@
  */
 
 import { computeStopTimes } from '../lib/timing.js';
+import { info, warnMsg } from '../lib/log-severity.js';
 
 const DEFAULT_TIMING = {
   speedKmh: { peak: 14, offpeak: 22, night: 28 },
@@ -77,7 +78,7 @@ export function reconcileTripsAndStopTimes(input) {
     // Find the route row matching this short name (CSV uses short name; rows use route_id).
     const routeRow = findRouteByShortName(input.routesByRouteId, routeShortName);
     if (!routeRow) {
-      localWarnings.push(`CSV for ${routeShortName} but no route in seed/Tranzy; skipping`);
+      localWarnings.push(warnMsg(`CSV for ${routeShortName} but no route in seed/Tranzy; skipping`));
       continue;
     }
     const routeId = routeRow.route_id;
@@ -263,7 +264,8 @@ export function reconcileTripsAndStopTimes(input) {
       const cat0 = catalogInfo(0);
       const cat1 = catalogInfo(1);
       let tier;
-      let summary;
+      /** @type {{severity: 'info' | 'warn', message: string} | null} */
+      let summary = null;
       if (bothExact) {
         tier = 'exact-both';
         // Silent — perfect alignment between catalog and CSV.
@@ -275,18 +277,20 @@ export function reconcileTripsAndStopTimes(input) {
         const fuzzyLabel = fuzzyDir === 0 ? inLabel : outLabel;
         const exactCat = exactDir === 0 ? cat0 : cat1;
         const fuzzyCat = fuzzyDir === 0 ? cat0 : cat1;
-        summary =
+        summary = warnMsg(
           `CSV origin label partial match for ${routeShortName}: ` +
           `dir=${exactDir} matches: catalog="${exactCat.name}" (from ${exactCat.source}) == csv="${exactLabel}". ` +
           `dir=${fuzzyDir} mismatches: catalog="${fuzzyCat.name}" (from ${fuzzyCat.source}) vs csv="${fuzzyLabel}". ` +
-          `Trusting column convention for the unmatched direction.`;
+          `Trusting column convention for the unmatched direction.`,
+        );
       } else if (bothFuzzy) {
         tier = 'fuzzy-both';
-        summary =
+        summary = info(
           `CSV origin labels fuzzy-matched for ${routeShortName}: ` +
           `dir=0 catalog="${cat0.name}" (from ${cat0.source}) ≈ csv="${inLabel}"; ` +
           `dir=1 catalog="${cat1.name}" (from ${cat1.source}) ≈ csv="${outLabel}". ` +
-          `Catalog and CSV use different precision/spelling for the same stops.`;
+          `Catalog and CSV use different precision/spelling for the same stops.`,
+        );
       } else if (anyFuzzy) {
         tier = 'fuzzy-one';
         const fuzzyDir = d0.fuzzy ? 0 : 1;
@@ -295,19 +299,21 @@ export function reconcileTripsAndStopTimes(input) {
         const noMatchLabel = noMatchDir === 0 ? inLabel : outLabel;
         const fuzzyCat = fuzzyDir === 0 ? cat0 : cat1;
         const noMatchCat = noMatchDir === 0 ? cat0 : cat1;
-        summary =
+        summary = warnMsg(
           `CSV origin label mismatch for ${routeShortName}: ` +
           `dir=${fuzzyDir} fuzzy-matched: catalog="${fuzzyCat.name}" (from ${fuzzyCat.source}) ≈ csv="${fuzzyLabel}". ` +
           `dir=${noMatchDir} doesn't match: catalog="${noMatchCat.name}" (from ${noMatchCat.source}) vs csv="${noMatchLabel}". ` +
-          `Trusting column convention; headsign for the unmatched direction falls back to route_long_name.`;
+          `Trusting column convention; headsign for the unmatched direction falls back to route_long_name.`,
+        );
       } else {
         tier = 'no-match';
-        summary =
+        summary = warnMsg(
           `CSV origin labels DO NOT MATCH catalog for ${routeShortName}: ` +
           `dir=0 catalog="${cat0.name}" (from ${cat0.source}) vs csv="${inLabel}"; ` +
           `dir=1 catalog="${cat1.name}" (from ${cat1.source}) vs csv="${outLabel}". ` +
           `Operator may have renamed or removed these terminals; CSV trip times are still used but ` +
-          `no headsign is derived from CSV terminal names.`;
+          `no headsign is derived from CSV terminal names.`,
+        );
       }
       if (summary) localWarnings.push(summary);
     }
@@ -383,10 +389,10 @@ export function reconcileTripsAndStopTimes(input) {
   // lost trip generation because Tranzy/seed patterns were missing,
   // and which source is to blame.
   if (fuzzyMatchCount > 0) {
-    localWarnings.push(
+    localWarnings.push(info(
       `origin validation: ${fuzzyMatchCount} (route, dir) pair(s) used fuzzy word-token matching to align catalog ↔ CSV origin labels ` +
       `(not exact match). See docs/quirks-and-rules.md#fuzzy-origin-matching.`,
-    );
+    ));
   }
   const totalRoutes = noPatternStats.bothDirsBothMissing.size
     + noPatternStats.bothDirsTranzyMissing.size
@@ -414,7 +420,7 @@ export function reconcileTripsAndStopTimes(input) {
     if (noPatternStats.oneDirSeedMissing.size > 0) {
       parts.push(`${noPatternStats.oneDirSeedMissing.size} routes (one direction) — missing in Transitous seed`);
     }
-    localWarnings.push(`trips: ${totalRoutes} routes have no usable pattern — ${parts.join('; ')}. Trips for these (route, dir) are dropped.`);
+    localWarnings.push(warnMsg(`trips: ${totalRoutes} routes have no usable pattern — ${parts.join('; ')}. Trips for these (route, dir) are dropped.`));
   }
 
   input.warnings.push(...localWarnings);

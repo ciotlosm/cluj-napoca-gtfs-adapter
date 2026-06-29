@@ -11,6 +11,8 @@
  *   6. CSV row count vs seed trip count divergence
  */
 
+import { info, warnMsg } from '../lib/log-severity.js';
+
 const ROUTE_TYPE_DEFAULT_COLORS = {
   0: '3BAC2C',   // tram → green
   3: 'D24CAE',   // bus → magenta
@@ -38,11 +40,11 @@ function checkAgencyCount(agencyTxt, warnings) {
   const lines = agencyTxt.split(/\r?\n/).filter((l) => l.trim());
   const dataRows = lines.slice(1); // drop header
   if (dataRows.length === 0) {
-    warnings.push('seed agency.txt has no data rows; feed will be missing agency.txt content');
+    warnings.push(warnMsg('seed agency.txt has no data rows; feed will be missing agency.txt content'));
     return;
   }
   if (dataRows.length > 1) {
-    warnings.push(`seed agency.txt has ${dataRows.length} rows (expected 1 for single-agency feed; see neary#87)`);
+    warnings.push(info(`seed agency.txt has ${dataRows.length} rows (expected 1 for single-agency feed; see neary#87)`));
   }
 }
 
@@ -78,10 +80,10 @@ function checkRouteColors(routes, warnings) {
       : `${b.ids.slice(0, 5).join(', ')}, ... and ${b.ids.length - 5} more`;
     return `${b.ids.length} routes use color #${b.color} ≠ type ${b.type} default #${b.expected} [${sample}]`;
   });
-  warnings.push(
+  warnings.push(info(
     `routes: ${mismatches.size} distinct non-default color bucket(s) — ` +
     `${parts.join('; ')}. See neary-gtfs#14.`,
-  );
+  ));
 }
 
 function checkZeroTripRoutes(csvByRoute, tripCountByRouteId, warnings) {
@@ -110,10 +112,10 @@ function checkZeroTripRoutes(csvByRoute, tripCountByRouteId, warnings) {
   const sample = zeroTripRoutes.length <= 10
     ? zeroTripRoutes.join(', ')
     : `${zeroTripRoutes.slice(0, 10).join(', ')}, ... and ${zeroTripRoutes.length - 10} more`;
-  warnings.push(
+  warnings.push(warnMsg(
     `${zeroTripRoutes.length} route(s) emitted 0 trips despite having CSV data — ` +
     `[${sample}]. Likely pattern-resolution failure (neary-gtfs#15).`,
-  );
+  ));
 }
 
 function findRouteIdByShortName(tripCountByRouteId, shortName, csvByRoute) {
@@ -134,6 +136,6 @@ function checkCsvWarnings(csvByRoute, warnings) {
     }
   }
   if (dropped > 0) {
-    warnings.push(`${dropped} CSV cell(s) dropped as non-HH:MM (see docs/csv-timetable-format.md § frequency annotations)`);
+    warnings.push(info(`${dropped} CSV cell(s) dropped as non-HH:MM (see docs/csv-timetable-format.md § frequency annotations)`));
   }
 }

@@ -42,6 +42,8 @@
  * See `docs/reconciliation-rules.md` priority table for the rationale.
  */
 
+import { info, warnMsg } from '../lib/log-severity.js';
+
 /**
  * @typedef {{
  *   route_id: string,
@@ -190,17 +192,17 @@ export function reconcileTranzyFallback({
   }
 
   if (routesWithFallback > 0) {
-    warnings.push(
+    warnings.push(info(
       `routes: ${routesWithFallback} routes using Tranzy /trips fallback ` +
       `(no CSV coverage — times empty, timepoint=0, ${tripsEmitted} trips emitted, ` +
       `service_ids=${serviceIds.join('+')})`,
-    );
+    ));
   }
   if (tripsSkippedNoStops > 0) {
-    warnings.push(`Tranzy fallback: ${tripsSkippedNoStops} trips skipped (no stop_times in Tranzy)`);
+    warnings.push(warnMsg(`Tranzy fallback: ${tripsSkippedNoStops} trips skipped (no stop_times in Tranzy)`));
   }
   if (tripsSkippedInvalidStops > 0) {
-    warnings.push(`Tranzy fallback: ${tripsSkippedInvalidStops} trips skipped (all stops missing from reconciled stops.txt)`);
+    warnings.push(warnMsg(`Tranzy fallback: ${tripsSkippedInvalidStops} trips skipped (all stops missing from reconciled stops.txt)`));
   }
 
   return { tripRows, stopTimeRows };

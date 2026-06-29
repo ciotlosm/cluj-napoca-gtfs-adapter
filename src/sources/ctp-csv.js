@@ -13,6 +13,7 @@
  */
 
 import { USER_AGENT } from '../lib/seed.js';
+import { warnMsg } from '../lib/log-severity.js';
 
 const DEFAULT_BASE_URL = 'https://ctpcj.ro/orare/csv/orar_{routeShortName}_{serviceId}.csv';
 
@@ -391,7 +392,7 @@ export async function fetchAllCsvSchedules(routes, opts = {}) {
       tasks.push(async () => {
         const parsed = await fetchCtpCsv(shortName, svcKey, opts);
         if (!parsed) {
-          warnings.push(`CSV missing: ${shortName}_${svcKey}`);
+          warnings.push(warnMsg(`CSV missing: ${shortName}_${svcKey}`));
           return;
         }
         if (!byRouteService.has(shortName)) byRouteService.set(shortName, new Map());

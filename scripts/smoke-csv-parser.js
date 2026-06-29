@@ -221,13 +221,13 @@ async function main() {
       const sample = expectedWeekend404s.length <= 5
         ? expectedWeekend404s.map((d) => d.route).join(', ')
         : `${expectedWeekend404s.slice(0, 5).map((d) => d.route).join(', ')}, ... and ${expectedWeekend404s.length - 5} more`;
-      console.log(`  Expected (route has weekday CSV — 404 is weekend/no-service):  ${expectedWeekend404s.length} routes [${sample}]`);
+      console.log(`  Expected (route has weekday CSV — 404 is weekend/no-service):  ${expectedWeekend404s.length} route_short_names [${sample}]`);
     }
     if (wholeLine404s.length > 0) {
       const sample = wholeLine404s.length <= 10
         ? wholeLine404s.map((d) => d.route).join(', ')
         : `${wholeLine404s.slice(0, 10).map((d) => d.route).join(', ')}, ... and ${wholeLine404s.length - 10} more`;
-      console.log(`  ⚠ WHOLE-LINE gaps (no CSV at all for this route):                ${wholeLine404s.length} routes [${sample}]`);
+      console.log(`  ⚠ WHOLE-LINE gaps (no CSV at all for this route_short_name):     ${wholeLine404s.length} route_short_names [${sample}]`);
     }
   }
   console.log('');

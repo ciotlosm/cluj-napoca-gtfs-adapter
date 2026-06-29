@@ -22,6 +22,7 @@
  */
 
 import { computeStopTimes } from '../lib/timing.js';
+import { info, warnMsg } from '../lib/log-severity.js';
 
 const DEFAULT_WINDOW = { start: '05:00', end: '23:00' };
 const DEFAULT_HEADWAY_SEC = 900; // 15 min — urban bus default
@@ -88,7 +89,7 @@ export function reconcileFrequencies(input) {
         const key = `${routeId}|${dir}`;
         const pattern = input.seedPatterns.get(key) ?? input.tranzyPatterns.get(key);
         if (!pattern || pattern.stops.length === 0) {
-          input.warnings.push(`frequency anchor skipped: ${routeShortName} dir=${dir} ${serviceId} — no pattern`);
+          input.warnings.push(warnMsg(`frequency anchor skipped: ${routeShortName} dir=${dir} ${serviceId} — no pattern`));
           continue;
         }
 
@@ -106,7 +107,7 @@ export function reconcileFrequencies(input) {
           })
           .filter(Boolean);
         if (orderedStops.length === 0) {
-          input.warnings.push(`frequency anchor skipped: ${routeShortName} dir=${dir} — stops missing coords`);
+          input.warnings.push(warnMsg(`frequency anchor skipped: ${routeShortName} dir=${dir} — stops missing coords`));
           continue;
         }
         const shape = (pattern.shapeId && input.shapesById.get(pattern.shapeId)) || [];
@@ -155,9 +156,9 @@ export function reconcileFrequencies(input) {
           exact_times: '0',
         });
 
-        input.warnings.push(
+        input.warnings.push(info(
           `frequency anchor: ${routeShortName} dir=${dir} ${serviceId} ${window.start}-${window.end} every ${(headway.avgSec / 60).toFixed(0)}min (avg)`,
-        );
+        ));
       }
     }
   }
@@ -167,7 +168,7 @@ export function reconcileFrequencies(input) {
 
 function deriveWindow(ranges, routeShortName, dir, serviceId, warnings) {
   if (ranges.length === 0) {
-    warnings.push(`frequency anchor ${routeShortName} dir=${dir} ${serviceId}: no range, using default ${DEFAULT_WINDOW.start}-${DEFAULT_WINDOW.end}`);
+    warnings.push(info(`frequency anchor ${routeShortName} dir=${dir} ${serviceId}: no range, using default ${DEFAULT_WINDOW.start}-${DEFAULT_WINDOW.end}`));
     return {
       start: DEFAULT_WINDOW.start,
       end: DEFAULT_WINDOW.end,
@@ -193,7 +194,7 @@ function deriveWindow(ranges, routeShortName, dir, serviceId, warnings) {
 
 function deriveHeadway(headways, routeShortName, dir, serviceId, warnings) {
   if (headways.length === 0) {
-    warnings.push(`frequency anchor ${routeShortName} dir=${dir} ${serviceId}: no headway, using default ${DEFAULT_HEADWAY_SEC}s`);
+    warnings.push(info(`frequency anchor ${routeShortName} dir=${dir} ${serviceId}: no headway, using default ${DEFAULT_HEADWAY_SEC}s`));
     return { minSec: DEFAULT_HEADWAY_SEC, maxSec: DEFAULT_HEADWAY_SEC, avgSec: DEFAULT_HEADWAY_SEC };
   }
   let minSec = Infinity;

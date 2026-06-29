@@ -24,6 +24,7 @@
  */
 
 import { parseCsv } from '../lib/csv.js';
+import { info } from '../lib/log-severity.js';
 
 /**
  * @param {{
@@ -128,14 +129,14 @@ export function reconcileRoutes({ seed, tranzy, warnings }) {
   // already in routes.txt, so grepping is enough for auditing.
   if (tranzyAdded > 0) {
     const onlyInTranzy = tranzyAdded - tranzyUpgradedToTransitousId;
-    warnings.push(
+    warnings.push(info(
       `routes: Tranzy primary catalog — ${tranzyAdded} routes total` +
       (onlyInTranzy > 0 ? `, ${onlyInTranzy} Tranzy-only` : '') +
       (tranzyUpgradedToTransitousId > 0 ? `, ${tranzyUpgradedToTransitousId} shared with Transitous (re-keyed to Transitous route_id for downstream stability)` : ''),
-    );
+    ));
   }
   if (transitousOnlyAdded > 0) {
-    warnings.push(`routes: ${transitousOnlyAdded} Transitous-only (Tranzy missing)`);
+    warnings.push(info(`routes: ${transitousOnlyAdded} Transitous-only (Tranzy missing)`));
   }
 
   return { routes, byRouteId };

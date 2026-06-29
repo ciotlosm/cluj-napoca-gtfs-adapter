@@ -28,13 +28,19 @@
  */
 
 /**
- * Max coordinate distance (meters) for a Transitous→Tranzy stop match.
- * Larger than the typical GPS jitter but small enough to exclude the
- * "same name, different platform" cases.
+ * Max coordinate distance (degrees) for a Transitous→Tranzy stop match.
+ * Used only as a tiebreaker when MULTIPLE Tranzy stops share the same
+ * normalized name (rare — same name across opposite platforms). NOT
+ * used to gate name-based matches, because urban stops are densely
+ * packed: two stops on opposite sides of the same street can be 5-10
+ * meters apart, well within any reasonable haversine threshold.
+ *
+ * ≈0.0001° ≈ 11m at Cluj's latitude — tight enough to distinguish
+ * platforms, loose enough to absorb GPS jitter (typically 3-8m).
  */
-const MAX_MATCH_M = 50;
+const MAX_MATCH_DEG = 0.0001;
 
-/** Normalize a stop name for fuzzy grouping. */
+/** Normalize a stop name for grouping. */
 function normalizeName(s) {
   return (s ?? '').toString().toLowerCase()
     .replace(/ă/g, 'a').replace(/â/g, 'a').replace(/î/g, 'i')
@@ -43,15 +49,13 @@ function normalizeName(s) {
     .trim();
 }
 
-/** Haversine distance in meters. */
-function haversineMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+/** Squared euclidean distance in degree-space. Avoids haversine
+ * overhead — we only use this as a tiebreaker between name-matching
+ * candidates that are already known to be nearby. */
+function degDistSq(ax, ay, bx, by) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
 }
 
 /**
@@ -59,6 +63,15 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
  * Transitous and Tranzy both publish under different ids. Stops that
  * one source omits (e.g. Tranzy-only newer metropolitan stops,
  * Transitous-only legacy stops) are unmapped.
+ *
+ * Matching policy:
+ *   - PRIMARY: normalized name match. The two sources publish the
+ *     same name for the same physical stop almost always (verified
+ *     empirically — see src/lib/stop-id-translator.js comment).
+ *   - TIEBREAKER (only when MULTIPLE Tranzy candidates share the name):
+ *     pick the Tranzy stop closest in coordinates, capped at
+ *     MAX_MATCH_DEG. We intentionally do NOT gate on coords alone —
+ *     see the haversine warning in the module doc.
  *
  * @param {Array<{stop_id, stop_name, stop_lat, stop_lon}>} tranzyStops
  * @param {Array<{stopId, name, lat, lon}>} transitousStops
@@ -68,7 +81,7 @@ export function buildTransitousToTranzyMap(tranzyStops, transitousStops) {
   const map = new Map();
   if (!Array.isArray(tranzyStops) || !Array.isArray(transitousStops)) return map;
 
-  // Bucket Tranzy by normalized name for O(1) candidate lookup.
+  // Bucket Tranzy by normalized name.
   const tranzyByName = new Map();
   for (const ts of tranzyStops) {
     const name = normalizeName(ts.stop_name);
@@ -88,16 +101,23 @@ export function buildTransitousToTranzyMap(tranzyStops, transitousStops) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const candidates = tranzyByName.get(name);
     if (!candidates || candidates.length === 0) continue;
+    // Single candidate → unambiguous match. Most stops fall in this
+    // bucket; name is enough.
+    if (candidates.length === 1) {
+      map.set(String(xs.stopId), candidates[0].id);
+      continue;
+    }
+    // Multiple Tranzy stops share the name — pick closest, capped.
     let best = null;
     let bestD = Infinity;
     for (const c of candidates) {
-      const d = haversineMeters(lat, lon, c.lat, c.lon);
+      const d = degDistSq(lat, lon, c.lat, c.lon);
       if (d < bestD) {
         best = c;
         bestD = d;
       }
     }
-    if (best && bestD <= MAX_MATCH_M) {
+    if (best && bestD <= MAX_MATCH_DEG * MAX_MATCH_DEG) {
       map.set(String(xs.stopId), best.id);
     }
   }

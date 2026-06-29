@@ -18,6 +18,8 @@
  * we never parse it as Number.
  */
 
+import { info, warnMsg } from '../lib/log-severity.js';
+
 export function reconcileStops({ seed, tranzy, warnings }) {
   /** @type {Map<string, any>} */
   const byStopId = new Map();
@@ -83,10 +85,10 @@ export function reconcileStops({ seed, tranzy, warnings }) {
   }
 
   if (tranzyAdded > 0) {
-    warnings.push(`stops: ${tranzyAdded} Tranzy-only stops added (not in Transitous seed)`);
+    warnings.push(info(`stops: ${tranzyAdded} Tranzy-only stops added (not in Transitous seed)`));
   }
   if (tranzySkipped > 0) {
-    warnings.push(`stops: ${tranzySkipped} Tranzy stops skipped (invalid lat/lon)`);
+    warnings.push(warnMsg(`stops: ${tranzySkipped} Tranzy stops skipped (invalid lat/lon)`));
   }
 
   return { stops, byStopId };

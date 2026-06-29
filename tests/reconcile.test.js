@@ -53,13 +53,13 @@ describe('reconcile', () => {
     // still see a warning line referencing the orange color #EF8732
     // (route 22's distinctive color, from Tranzy) bucketed with any
     // other routes that share it.
-    expect(warnings.some((w) => w.includes('EF8732'))).toBe(true);
+    expect(warnings.some((w) => w.message.includes('EF8732'))).toBe(true);
   });
 
   it('M26 direction=1 is resolvable via Tranzy fallback (fixes #15)', () => {
     const { warnings } = reconcile({ seed, tranzy: fixtures.tranzy, csv, options: { buildDate: new Date('2026-06-29') } });
     // We should NOT have a warning about M26 dir=1 having no pattern.
-    const has = warnings.some((w) => w.includes('M26') && w.includes('dir=1') && w.includes('No pattern'));
+    const has = warnings.some((w) => w.message.includes('M26') && w.message.includes('dir=1') && w.message.includes('No pattern'));
     expect(has).toBe(false);
   });
 

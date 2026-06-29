@@ -20,6 +20,8 @@
  * by shape_id and emit rows ordered by sequence.
  */
 
+import { info } from '../lib/log-severity.js';
+
 export function reconcileShapes({ seed, tranzy, warnings }) {
   /** @type {Map<string, Array<{lat:number, lon:number, dist?:number}>>} */
   const byShapeId = new Map();
@@ -71,10 +73,10 @@ export function reconcileShapes({ seed, tranzy, warnings }) {
   // Build-log summary. The previous per-shape warnings (one line per
   // new shape) were too noisy — single line per source now.
   if (tranzyShapeCount > 0) {
-    warnings.push(`shapes: Tranzy primary catalog — ${tranzyShapeCount} shapes from Tranzy`);
+    warnings.push(info(`shapes: Tranzy primary catalog — ${tranzyShapeCount} shapes from Tranzy`));
   }
   if (transitousAdded > 0) {
-    warnings.push(`shapes: ${transitousAdded} Transitous-only shapes (not in Tranzy)`);
+    warnings.push(info(`shapes: ${transitousAdded} Transitous-only shapes (not in Tranzy)`));
   }
 
   // Flatten to GTFS rows with fresh sequence numbers.

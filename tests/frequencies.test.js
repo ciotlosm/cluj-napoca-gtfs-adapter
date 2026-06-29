@@ -62,7 +62,7 @@ describe('#15 — M26 frequency annotation fix', () => {
 
   it('logs the frequency anchor in build warnings', () => {
     const { warnings } = reconcile({ seed, tranzy: null, csv, options: { buildDate: new Date('2026-06-29') } });
-    expect(warnings.some((w) => w.includes('frequency anchor') && w.includes('M26') && w.includes('dir=0'))).toBe(true);
+    expect(warnings.some((w) => w.message.includes('frequency anchor') && w.message.includes('M26') && w.message.includes('dir=0'))).toBe(true);
   });
 });
 
