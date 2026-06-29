@@ -157,7 +157,11 @@ export class TranzyClient {
       if (res.status === 404) {
         // 404 typically means the endpoint isn't supported by this agency.
         // Return an empty list so downstream pipelines can still proceed.
-        console.log(`[tranzy] ${endpoint} returned 404 — treating as empty`);
+        // Special-case /calendar: Tranzy's docs explicitly say /calendar
+        // is not exposed (https://tranzy.dev/) — silent, not a log line.
+        if (endpoint !== '/calendar') {
+          console.log(`[tranzy] ${endpoint} returned 404 — treating as empty`);
+        }
         return [];
       }
 

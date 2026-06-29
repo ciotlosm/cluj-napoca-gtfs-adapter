@@ -251,7 +251,8 @@ async function main() {
   const allowWholeLine = env.SMOKE_ALLOW_WHOLE_LINE_404S === '1';
   if (!allowWholeLine && wholeLine404s.length > 0) {
     console.error('');
-    console.error(`[smoke:csv] FAIL: ${wholeLine404s.length} WHOLE-LINE 404(s) — route(s) have ZERO CSV coverage:`);
+    console.error('::error::[smoke:csv] FAIL — WHOLE-LINE 404(s) — route(s) have ZERO CSV coverage');
+    console.error(`[smoke:csv] ${wholeLine404s.length} WHOLE-LINE 404(s) — route(s) have ZERO CSV coverage:`);
     for (const d of wholeLine404s.slice(0, 20)) {
       console.error(`  - ${d.route}`);
     }
@@ -265,6 +266,7 @@ async function main() {
 
   if (unrecognizedCount > 0) {
     console.error('');
+    console.error('::error::[smoke:csv] FAIL — unrecognized CSV cell(s); extend classifyCell()');
     console.error(`[smoke:csv] FAIL: ${unrecognizedCount} unrecognized cell(s) — extend classifyCell() in src/sources/ctp-csv.js`);
     for (const s of unrecognizedSamples) {
       console.error(`  - ${s.route}: "${s.value}"`);
@@ -292,6 +294,7 @@ async function main() {
   // real signal we care about.
   if (failOnInfra && totalInfra > 0) {
     console.error('');
+    console.error('::error::[smoke:csv] FAIL — infrastructure miss; build has no real signal');
     console.error(`[smoke:csv] FAIL: ${totalInfra} CSV fetch(es) hit infrastructure issues — build has no real signal:`);
     if (totalWafBlocked > 0) console.error(`  - ${totalWafBlocked} WAF-blocked (got 200 OK but body wasn't CSV)`);
     if (totalHttpError > 0) console.error(`  - ${totalHttpError} HTTP error(s) (non-404 server error)`);

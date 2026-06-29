@@ -278,8 +278,16 @@ function fixPostMidnight(times) {
 export async function fetchCtpCsv(routeShortName, serviceKey, opts = {}) {
   const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
   const fetchImpl = opts.fetch ?? globalThis.fetch;
+  // CTP's URL convention strips whitespace from the route_short_name
+  // when building the CSV path. So `39 CREIC` (the route_short_name
+  // in Transitous) becomes `orar_39CREIC_lv.csv` (no space), NOT
+  // `orar_39%20CREIC_lv.csv` (URL-encoded space). The encoded form
+  // returns 404 even when CTP has published the CSV — verified by
+  // hitting both endpoints: the no-space form returns the actual
+  // route_long_name header, the URL-encoded form returns 404.
+  const urlShortName = routeShortName.replace(/\s+/g, '');
   const url = baseUrl
-    .replace('{routeShortName}', encodeURIComponent(routeShortName))
+    .replace('{routeShortName}', encodeURIComponent(urlShortName))
     .replace('{serviceId}', encodeURIComponent(serviceKey));
   let res;
   try {
