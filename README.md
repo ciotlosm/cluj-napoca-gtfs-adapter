@@ -142,7 +142,7 @@ GitHub Actions cron at `30 0 * * *` UTC publishes the daily zip to the
 `binaries` branch, served directly from GitHub raw:
 
 ```
-https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip
+https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/cluj-napoca.gtfs.zip
 ```
 
 Requires a `TRANZY_API_KEY` repo secret. Optional: `RT_PARITY_URL`

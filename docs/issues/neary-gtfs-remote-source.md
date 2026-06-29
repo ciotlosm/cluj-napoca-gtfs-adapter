@@ -80,7 +80,7 @@ downloads the URL instead of hitting Transitous for that feed.
   "enhances": "Cluj-Napoca",
   "source": {
     "type": "remote",
-    "url": "https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip",
+    "url": "https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/cluj-napoca.gtfs.zip",
     "etag": "optional, for cache validation"
   },
   "license": { ... }
@@ -135,7 +135,7 @@ future:   transitous ← [cluj-napoca-gtfs-adapter registered upstream]
 
 ## Acceptance criteria
 
-- [ ] `feeds/cluj-napoca/config.json` declares `source.type = "remote"` with a URL pointing at `cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip`.
+- [ ] `feeds/cluj-napoca/config.json` declares `source.type = "remote"` with a URL pointing at `cluj-napoca-gtfs-adapter@binaries/cluj-napoca.gtfs.zip`.
 - [ ] `feeds/cluj-napoca/build.js` is **not** invoked for this feed in CI.
 - [ ] `feeds/cluj-napoca/config.json` `tranzy` field is removed.
 - [ ] `output/cluj-napoca.gtfs.zip` (the SQLite, not the source zip) is regenerated daily and published to `binaries`.

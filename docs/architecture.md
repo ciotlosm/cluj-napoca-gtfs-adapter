@@ -240,10 +240,11 @@ UTC import). Two-phase pipeline:
 4. **Stage 2** — `node src/cli.js build` (reads CSVs from `.build-input/`,
    assembles the GTFS feed, writes the zip). Never fetches upstream.
    Both stages use `TRANZY_API_KEY` from repo secret.
-5. Push `output/cluj-napoca.gtfs.zip` to the `binaries` branch (orphan,
-   same pattern as `neary-gtfs/.github/workflows/daily.yml`).
+5. Push `output/cluj-napoca.gtfs.zip` to the root of the `binaries`
+   branch (orphan, no `output/` prefix — the branch itself is the
+   artifact namespace, same pattern as `neary-gtfs/.github/workflows/daily.yml`).
 6. GitHub raw serves it at
-   `https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip`.
+   `https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/cluj-napoca.gtfs.zip`.
 
 The `neary-gtfs` pipeline then mirrors this URL into its `binaries`
 branch's `feeds.json` (or directly via a `realtime.zip` style entry)

@@ -82,8 +82,8 @@ jobs:
             cd -
           fi
 
-          mkdir -p "$DIR/output"
-          cp output/cluj-napoca.gtfs.zip "$DIR/output/cluj-napoca.gtfs.zip"
+          mkdir -p "$DIR"
+          cp output/cluj-napoca.gtfs.zip "$DIR/cluj-napoca.gtfs.zip"
 
           cd "$DIR"
           git config user.name "github-actions[bot]"
@@ -101,6 +101,6 @@ jobs:
       - name: Smoke-test the published URL (next day)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          URL="https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip"
+          URL="https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/cluj-napoca.gtfs.zip"
           echo "Validating $URL"
           curl -sI "$URL" | head -5
