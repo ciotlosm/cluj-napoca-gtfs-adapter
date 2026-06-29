@@ -80,17 +80,45 @@ for (const [routeShortName, byService] of input.byRouteService.entries()) {
     // origin-validation result) ONCE, then reuse for every service day.
     // `plan[dir]` is null when the route has no pattern for that dir
     // (warnings are already emitted).
+    //
+    // Origin-validation tier (per CTP CSV convention):
+    //   - in_stop_name  = origin of col 0 buses  = first stop of dir 0
+    //   - out_stop_name = origin of col 1 buses  = first stop of dir 1
+    //
+    // Tiers (best → worst):
+    //   1. exact-both : both directions exactly match. Silent.
+    //   2. exact-one  : at least one exact, the other is fuzzy/no-match.
+    //                   We know one direction's column is correct, so
+    //                   we trust the convention for the other. Warn
+    //                   but still use CSV labels.
+    //   3. fuzzy-both : both directions fuzzy-match. Trust convention.
+    //                   Warn but still use CSV labels.
+    //   4. fuzzy-one  : only one direction fuzzy-matches. Heavier warn.
+    //   5. no-match   : neither exact nor fuzzy match on either side.
+    //                   Strongest warning — catalog and CSV are
+    //                   disagreeing about the terminals entirely. Still
+    //                   use the CSV (operator-published data wins for
+    //                   trip times), but skip CSV labels as headsign
+    //                   fallback since we can't trust them.
+    //
+    // The tier is per-(route, dir) but we emit ONE summary warning
+    // per route (not per service-day × per direction) so the build
+    // log stays readable.
+    const inLabel = headersCsv.inStopName;
+    const outLabel = headersCsv.outStopName;
+    const dir0FirstStop = null; // will be filled when plan[0] resolves
+    const dir1FirstStop = null;
     /** @type {Map<number, any>} */
     const plans = new Map();
+    /** @type {Array<{dir: number, exact: boolean, fuzzy: boolean}>} */
+    const perDirMatch = [];
     for (const dir of [0, 1]) {
       const key = `${routeId}|${dir}`;
       const seedPattern = input.seedPatterns.get(key);
       const tranzyPattern = input.tranzyPatterns.get(key);
       const pattern = tranzyPattern ?? seedPattern;
       if (!pattern || pattern.stops.length === 0) {
-        // No pattern yet — we'll emit "No pattern" once we know there
-        // are departures in this direction (in the service-day loop).
-        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: true, headsign: null });
+        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: false, headsign: null });
         continue;
       }
       const orderedStops = pattern.stops
@@ -109,35 +137,76 @@ for (const [routeShortName, byService] of input.byRouteService.entries()) {
         })
         .filter(Boolean);
       if (orderedStops.length === 0) {
-        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: true, headsign: null });
+        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: false, headsign: null });
         continue;
       }
-      // Origin validation (per CTP CSV convention):
-      //   - in_stop_name  = origin of col 0 buses  = first stop of dir 0
-      //   - out_stop_name = origin of col 1 buses  = first stop of dir 1
-      // (The other terminal is the destination of that direction and
-      // is what we use as the headsign — see csvHeadsign below.)
-      // If the origin doesn't match, the direction assignment may be
-      // wrong — surface a strong warning ONCE per (route, dir), not
-      // once per service day.
       const expectedOriginName = orderedStops[0]?.name ?? null;
-      const csvOriginName = dir === 0 ? headersCsv.inStopName : headersCsv.outStopName;
-      const csvOriginTrustable = terminalNamesMatch(expectedOriginName, csvOriginName);
-      if (!csvOriginTrustable) {
-        localWarnings.push(
-          `CSV origin mismatch: ${routeShortName} dir=${dir} — ` +
-          `pattern first stop is "${expectedOriginName}", CSV column header says "${csvOriginName}". ` +
-          `Direction assignment may be wrong; trip times for this direction should be reviewed. ` +
-          `Skipping CSV terminal name as headsign fallback for this route.`,
-        );
-      }
-      const csvHeadsign = dir === 0 ? headersCsv.outStopName : headersCsv.inStopName;
+      const csvOriginName = dir === 0 ? inLabel : outLabel;
+      const exact = expectedOriginName && csvOriginName
+        ? expectedOriginName.trim().toLowerCase() === csvOriginName.trim().toLowerCase()
+        : false;
+      const fuzzy = exact ? true : terminalNamesMatch(expectedOriginName, csvOriginName);
+      perDirMatch.push({ dir, exact, fuzzy });
+      const csvOriginTrustable = exact || fuzzy;
+      const csvHeadsign = dir === 0 ? outLabel : inLabel;
       const headsign = pattern.headsign
         || (csvOriginTrustable ? csvHeadsign : null)
         || routeRow.route_long_name
         || routeShortName;
       const shape = (pattern.shapeId && input.shapesById.get(pattern.shapeId)) || [];
       plans.set(dir, { pattern, orderedStops, csvOriginTrustable, headsign, shape });
+    }
+
+    // Compute the tier + emit ONE summary warning per route (not per
+    // service-day × direction, which would triple-print for LV+S+D).
+    if (perDirMatch.length > 0) {
+      const dir0 = perDirMatch.find((m) => m.dir === 0);
+      const dir1 = perDirMatch.find((m) => m.dir === 1);
+      const d0 = dir0 ?? { exact: false, fuzzy: false };
+      const d1 = dir1 ?? { exact: false, fuzzy: false };
+      const bothExact = d0.exact && d1.exact;
+      const anyExact = d0.exact || d1.exact;
+      const bothFuzzy = d0.fuzzy && d1.fuzzy;
+      const anyFuzzy = d0.fuzzy || d1.fuzzy;
+      let tier;
+      let summary;
+      if (bothExact) {
+        tier = 'exact-both';
+        // Silent — perfect alignment between catalog and CSV.
+      } else if (anyExact) {
+        tier = 'exact-one';
+        const exactDir = d0.exact ? 0 : 1;
+        const fuzzyDir = exactDir === 0 ? 1 : 0;
+        const exactLabel = exactDir === 0 ? inLabel : outLabel;
+        const fuzzyLabel = fuzzyDir === 0 ? inLabel : outLabel;
+        summary =
+          `CSV origin label partial match for ${routeShortName}: dir=${exactDir} exactly matches "${exactLabel}", ` +
+          `dir=${fuzzyDir} label "${fuzzyLabel}" is fuzzy/no-match. Trusting column convention for the unmatched direction.`;
+      } else if (bothFuzzy) {
+        tier = 'fuzzy-both';
+        summary =
+          `CSV origin labels fuzzy-matched for ${routeShortName}: ` +
+          `dir=0 expected near "${inLabel}", dir=1 expected near "${outLabel}". ` +
+          `Catalog and CSV use different precision/spelling for the same stops.`;
+      } else if (anyFuzzy) {
+        tier = 'fuzzy-one';
+        const fuzzyDir = d0.fuzzy ? 0 : 1;
+        const noMatchDir = fuzzyDir === 0 ? 1 : 0;
+        const fuzzyLabel = fuzzyDir === 0 ? inLabel : outLabel;
+        const noMatchLabel = noMatchDir === 0 ? inLabel : outLabel;
+        summary =
+          `CSV origin label mismatch for ${routeShortName}: dir=${fuzzyDir} fuzzy-matched "${fuzzyLabel}", ` +
+          `dir=${noMatchDir} label "${noMatchLabel}" doesn't match catalog. ` +
+          `Trusting column convention; headsign for the unmatched direction falls back to route_long_name.`;
+      } else {
+        tier = 'no-match';
+        summary =
+          `CSV origin labels DO NOT MATCH catalog for ${routeShortName}: ` +
+          `neither "${inLabel}" nor "${outLabel}" matches any pattern's first stop. ` +
+          `Operator may have renamed or removed these terminals; CSV trip times are still used but ` +
+          `no headsign is derived from CSV terminal names.`;
+      }
+      if (summary) localWarnings.push(summary);
     }
 
     for (const [serviceId, csv] of byService.entries()) {
