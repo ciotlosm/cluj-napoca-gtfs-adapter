@@ -155,7 +155,7 @@ repo variable to enable the GTFS-RT trip-ID parity check
 | Step | What it does | Fails the build when |
 |---|---|---|
 | `npm test` | Vitest unit + reconciliation tests with canned fixtures | any test fails |
-| `npm run smoke:csv` | Scrapes every CTP CSV (full network), parses each through the production parser | any cell is unrecognized (i.e. the `#15` fix needs extending) |
+| `npm run fetch:csv` | Scrapes every CTP CSV (full network), parses each through the production parser | any cell is unrecognized (i.e. the `#15` fix needs extending) |
 | `npm run smoke:trip-ids` | Self-check on `trips.txt` from our built zip: every trip_id ends in `_HHMM` (so `neary`'s `parseLiveStartMin` fallback can extract the start time) | accidental format regression in `makeTripId()` |
 
 ## License

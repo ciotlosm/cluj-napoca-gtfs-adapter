@@ -19,7 +19,10 @@ export {
   CSV_BASE_URL,
   CSV_SERVICE_KEYS,
   CSV_SERVICE_ID_MAP,
+  // aliases (re-exported so smoke/build can debug 404s by checking the map)
+  TRANZY_TO_CTP_SHORTNAME,
   // parser (re-exported for convenience)
   parseCtpCsv,
   classifyCell,
 } from './client.js';
+export { TRANZY_TO_CTP_SHORTNAME as _TRANZY_TO_CTP_SHORTNAME_MAP } from './shortname-aliases.js';

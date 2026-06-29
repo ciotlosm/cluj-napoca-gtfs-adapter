@@ -44,7 +44,7 @@ jobs:
         # .build-input/ for the build step. Fails loud on any infra miss
         # (WAF / HTTP 5xx / network) — operator must rerun after upstream
         # recovers.
-        run: npm run smoke:csv
+        run: npm run fetch:csv
         env:
           TRANZY_API_KEY: ${{ secrets.TRANZY_API_KEY }}
           TRANZY_AGENCY_ID: '2'

@@ -4,7 +4,7 @@ This document captures the **non-obvious** behaviors of the
 `cluj-napoca-gtfs-adapter` reconciler — the things you'd only know if
 you read every warning text and cross-referenced against CTP's
 upstream catalog. Read this before changing warning text, classify
-logic, or the failure thresholds in `scripts/smoke-csv-parser.js`.
+logic, or the failure thresholds in `scripts/fetch-stage.js`.
 
 For the per-field priority order (which source wins for which GTFS
 field) see [`assemble-rules.md`](./assemble-rules.md).

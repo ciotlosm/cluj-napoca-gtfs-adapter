@@ -2,7 +2,7 @@
  * Shared "build input" directory layout.
  *
  * The pipeline is split into two phases:
- *   Phase 1 — smoke (scripts/smoke-csv-parser.js):
+ *   Phase 1 — fetch (scripts/fetch-stage.js):
  *     Fetches every (route, service) CSV from CTP, writes each
  *     200-ok body to disk, and emits a status manifest at the end.
  *     This is the ONLY phase that touches upstream.

@@ -10,10 +10,11 @@
   },
   "scripts": {
     "build": "node src/cli.js build",
-    "build:full": "npm run smoke:csv && npm run build",
+    "build:full": "npm run fetch:csv && npm run build",
     "validate": "node src/cli.js validate",
     "reconcile:dry": "node src/cli.js reconcile --dry-run",
-    "smoke:csv": "node scripts/smoke-csv-parser.js",
+    "fetch:csv": "node scripts/fetch-stage.js",
+    "inspect:404s": "node scripts/inspect-404s.js",
     "smoke:trip-ids": "node src/verify-rt-parity.js",
     "test": "vitest --run",
     "test:watch": "vitest",

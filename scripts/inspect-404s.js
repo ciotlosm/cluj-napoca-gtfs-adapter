@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * One-off: dump the 35 URLs that returned 404 in the latest smoke run,
+ * One-off: dump the 35 URLs that returned 404 in the latest fetch-stage run,
  * so we can cross-reference with CTP's published schedule list and
  * figure out which are real catalog gaps vs transient issues.
  */

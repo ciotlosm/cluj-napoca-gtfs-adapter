@@ -15,9 +15,11 @@
 import { USER_AGENT } from '../../lib/seed.js';
 import { warnMsg } from '../../lib/log-severity.js';
 import { readCsvBody, readStatusManifest } from '../../lib/build-input.js';
+import { TRANZY_TO_CTP_SHORTNAME } from './shortname-aliases.js';
 import { parseCtpCsv } from './parser.js';
 
 export { parseCtpCsv, classifyCell } from './parser.js';
+export { TRANZY_TO_CTP_SHORTNAME } from './shortname-aliases.js';
 
 const DEFAULT_BASE_URL = 'https://ctpcj.ro/orare/csv/orar_{routeShortName}_{serviceId}.csv';
 
@@ -49,7 +51,10 @@ export function normalizeShortNameForCtpUrl(routeShortName) {
  * both use this so URL-convention changes only need to land in one place.
  *
  * Calls {@link normalizeShortNameForCtpUrl} to strip whitespace before
- * building the URL (see that helper for why CTP requires this).
+ * building the URL (see that helper for why CTP requires this), and
+ * applies the {@link TRANZY_TO_CTP_SHORTNAME} alias map for routes
+ * where Tranzy shortens the name in a way that doesn't match CTP's
+ * URL (e.g. `39C` → `39CREIC`).
  *
  * @param {string} routeShortName
  * @param {string} serviceKey  'lv' | 's' | 'd' (or 'ld')
@@ -57,7 +62,10 @@ export function normalizeShortNameForCtpUrl(routeShortName) {
  * @returns {string}
  */
 export function buildCtpCsvUrl(routeShortName, serviceKey, baseUrl = DEFAULT_BASE_URL) {
-  const urlShortName = normalizeShortNameForCtpUrl(routeShortName);
+  // Apply explicit Tranzy→CTP aliases first (handles shortening that
+  // can't be derived from the name itself), then normalize whitespace.
+  const aliased = TRANZY_TO_CTP_SHORTNAME[routeShortName] ?? routeShortName;
+  const urlShortName = normalizeShortNameForCtpUrl(aliased);
   return baseUrl
     .replace('{routeShortName}', encodeURIComponent(urlShortName))
     .replace('{serviceId}', encodeURIComponent(serviceKey));
@@ -158,7 +166,7 @@ export function readCtpCsvFromDisk(routeShortName, serviceKey) {
   if (!manifest) {
     throw new Error(
       `[ctp-csv] .build-input/csv-status.json not found. ` +
-      `Run scripts/smoke-csv-parser.js first to populate the build-input directory.`,
+      `Run scripts/fetch-stage.js first to populate the build-input directory.`,
     );
   }
   const entry = manifest.entries.find((e) => e.route === routeShortName && e.svc === serviceKey);

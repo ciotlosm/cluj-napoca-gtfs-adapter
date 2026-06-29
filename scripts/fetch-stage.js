@@ -61,7 +61,7 @@ const WAF_HEADERS = {
 
 // --- Local log helpers (kept inline since this is a single-file script;
 // a shared logger module would be over-engineering for one consumer).
-const TAG = '[smoke:csv]';
+const TAG = '[fetch:csv]';
 const pad = (s, n) => String(s).padEnd(n);
 const ghaError = (msg) => console.error(`::error::${TAG} ${msg}`);
 const die = (code, msg) => { console.error(TAG, msg); exit(code); };

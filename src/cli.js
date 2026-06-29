@@ -60,7 +60,7 @@ async function cmdBuild() {
   if (!statusManifestExists()) {
     console.error(
       'FATAL: .build-input/csv-status.json not found.\n' +
-      'Run scripts/smoke-csv-parser.js first to fetch CSVs, then re-run build.',
+      'Run scripts/fetch-stage.js first to fetch CSVs, then re-run build.',
     );
     exit(1);
   }
