@@ -80,7 +80,7 @@ const TRANZY = {
   trips: [
     // M26 direction=1 — only present in Tranzy, missing from seed.
     // Note: real Tranzy uses route_id='92' for M26, but our reconciler
-    // matches by route_short_name (see reconciliation-rules.md § pattern
+    // matches by route_short_name (see assemble-rules.md § pattern
     // resolution), so for this fixture we use 'M26' to keep the test
     // focused on the "missing direction" path rather than the
     // "different IDs" path.

@@ -6,7 +6,7 @@
  *   - Tranzy uses small numeric IDs (1, 2, 3, ...)
  *   - Transitous uses larger numeric IDs (247, 248, 215, ...)
  *
- * Since Tranzy is the primary catalog (per `docs/reconciliation-rules.md`),
+ * Since Tranzy is the primary catalog (per `docs/assemble-rules.md`),
  * `byStopId` is keyed by Tranzy's stop_ids. But Transitous's patterns
  * (`seedPatternsByRouteDir`) reference stops by Transitous's stop_ids.
  * Without translation, the pattern → orderedStops lookup in trips.js

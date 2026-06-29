@@ -39,7 +39,7 @@
  * (none of LV/S/D returned parseable data). If CSV exists but is
  * suspended for one service day, we don't add a Tranzy fallback for
  * that day — the route is still considered "served" by the other days.
- * See `docs/reconciliation-rules.md` priority table for the rationale.
+ * See `docs/assemble-rules.md` priority table for the rationale.
  */
 
 import { info, warnMsg } from '../../lib/log-severity.js';

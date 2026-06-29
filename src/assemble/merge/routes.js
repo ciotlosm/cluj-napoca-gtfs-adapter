@@ -20,7 +20,7 @@
  * Routes only in Tranzy: included with Tranzy's `route_id`.
  * Routes only in Transitous: included with Transitous's `route_id`.
  *
- * See `docs/reconciliation-rules.md` for the priority table.
+ * See `docs/assemble-rules.md` for the priority table.
  */
 
 import { parseCsv } from '../../lib/csv.js';

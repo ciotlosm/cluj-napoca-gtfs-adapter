@@ -38,7 +38,10 @@ in two distinct situations:
    route×service combo and emits trips for the days that do work.
 
 2. **Whole-line gap** — the route is listed on CTP's website but
-   has zero CSVs published for any service day (e.g. `39 CREIC`).
+   has zero CSVs published for any service day (no recent example —
+   the historical `39 CREIC` case is fixed via the
+   [`TRANZY_TO_CTP_SHORTNAME`](../src/sources/ctp-csv/shortname-aliases.js)
+   alias map).
    This **IS a build failure** — the operator hasn't published any
    authoritative schedule data, and the Tranzy fallback (see below)
    is the only data we have.
@@ -53,8 +56,10 @@ route's 404s against its own successful CSV fetches:
    fails build with exit code 3 unless
    `SMOKE_ALLOW_WHOLE_LINE_404S=1`)
 
-Current state (2026-06-29): 17 expected 404s (weekday-only routes
-missing weekend CSV), 1 whole-line gap (`39 CREIC`).
+Current state (2026-06-29): 18 expected 404s (weekday-only routes
+missing weekend CSV), 0 whole-line gaps (the historical `39 CREIC`
+case is fixed via the [`TRANZY_TO_CTP_SHORTNAME`](../src/sources/ctp-csv/shortname-aliases.js)
+alias map: `39C` → `39CREIC`).
 
 ---
 
@@ -191,10 +196,17 @@ a real data loss.
 
 ## Tranzy /trips fallback for routes without CSV
 
-For routes with **no CTP CSV coverage** (e.g. the `39 CREIC` whole-line
-gap, or new metropolitan lines CTP hasn't published yet), the adapter
-pulls trips directly from Tranzy's `/trips` and `/stop_times`
-endpoints via `src/assemble/emit/tranzy-fallback.js`.
+For routes with **no CTP CSV coverage** (new metropolitan lines CTP
+hasn't published yet — TE1-TE14, 40S, 87B, M26U, 101A, 30U, etc.),
+the adapter pulls trips directly from Tranzy's `/trips` and
+`/stop_times` endpoints via `src/assemble/emit/tranzy-fallback.js`.
+
+Historical note: `39 CREIC` used to be a whole-line gap until we
+discovered Tranzy publishes its `route_short_name` as the truncated
+`39C` while CTP publishes the CSV at `orar_39CREIC_lv.csv`. The
+[`TRANZY_TO_CTP_SHORTNAME`](../src/sources/ctp-csv/shortname-aliases.js)
+alias map handles this — `39C` → `39CREIC` — without going through
+Transitous.
 
 Constraints:
 

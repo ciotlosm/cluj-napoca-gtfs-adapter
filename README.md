@@ -21,7 +21,7 @@ Pulls data from three independent sources and reconciles them:
 …and writes a standards-compliant `cluj-napoca.gtfs.zip` ready for any
 GTFS consumer.
 
-See [`docs/reconciliation-rules.md`](./docs/reconciliation-rules.md) for
+See [`docs/assemble-rules.md`](./docs/assemble-rules.md) for
 the full priority table.
 
 ## Quick start

@@ -25,9 +25,11 @@ Substitutions:
 ### Not all routes × services exist
 
 As of 2026-06-29 the routes without any CSV data are:
-**M26, 2, M35, 39 CREIC**. These routes' schedules fall back to whatever
-the Transitous seed carries (the seed's `trips.txt` and `stop_times.txt`
-are passed through unchanged).
+**M26, 2, M35** (Transpira school routes that only publish on certain
+service days). The historical `39 CREIC` whole-line gap is fixed via
+the [`TRANZY_TO_CTP_SHORTNAME`](../src/sources/ctp-csv/shortname-aliases.js)
+alias map: Tranzy publishes the route as `39C`, the alias maps it to
+`39CREIC` for the CSV URL.
 
 For these routes, Tranzy becomes especially important: we can synthesize
 trips from Tranzy's `(route_id, direction_id)` pattern × the seed's

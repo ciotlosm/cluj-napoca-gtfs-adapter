@@ -34,9 +34,11 @@ const DEFAULT_BASE_URL = 'https://ctpcj.ro/orare/csv/orar_{routeShortName}_{serv
  *     endpoints: the no-space form returns the actual route_long_name
  *     header, the URL-encoded form returns 404.
  *
- * Exposed as a separate helper so it's discoverable — the only
- * route_short_name with whitespace today is `39 CREIC`, but CTP could
- * add more. Anything CSV-URL-related should funnel through here.
+ * Note: the `39 CREIC` case is now ALSO handled by the
+ * {@link TRANZY_TO_CTP_SHORTNAME} alias map (`39C` → `39CREIC`),
+ * which catches the Tranzy-side shortening before this helper runs.
+ * This helper covers the whitespace case from Transitous's seed
+ * (where `39 CREIC` would otherwise need normalization).
  *
  * @param {string} routeShortName
  * @returns {string}
@@ -47,8 +49,9 @@ export function normalizeShortNameForCtpUrl(routeShortName) {
 
 /**
  * Build the canonical CTP CSV URL for a (route_short_name, service_id)
- * pair. Single source of truth — the smoke script and dump-404s.js
- * both use this so URL-convention changes only need to land in one place.
+ * pair. Single source of truth — the fetch-stage script and the
+ * inspect-404s diagnostic both use this so URL-convention changes
+ * only need to land in one place.
  *
  * Calls {@link normalizeShortNameForCtpUrl} to strip whitespace before
  * building the URL (see that helper for why CTP requires this), and
@@ -114,13 +117,9 @@ const DEFAULT_SERVICE_ID_MAP = { lv: 'LV', s: 'S', d: 'D' };
 export async function fetchCtpCsv(routeShortName, serviceKey, opts = {}) {
   const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
   const fetchImpl = opts.fetch ?? globalThis.fetch;
-  // CTP's URL convention strips whitespace from the route_short_name
-  // when building the CSV path. So `39 CREIC` (the route_short_name
-  // in Transitous) becomes `orar_39CREIC_lv.csv` (no space), NOT
-  // `orar_39%20CREIC_lv.csv` (URL-encoded space). The encoded form
-  // returns 404 even when CTP has published the CSV — verified by
-  // hitting both endpoints: the no-space form returns the actual
-  // route_long_name header, the URL-encoded form returns 404.
+  // URL construction handles both the Tranzy→CTP alias map
+  // (e.g. `39C` → `39CREIC`) and the whitespace normalization
+  // (`39 CREIC` → `39CREIC`). See {@link buildCtpCsvUrl} for details.
   const url = buildCtpCsvUrl(routeShortName, serviceKey, baseUrl);
   let res;
   try {

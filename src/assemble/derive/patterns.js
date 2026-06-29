@@ -2,7 +2,7 @@
  * Pattern resolution: given the seed + Tranzy + CSV inputs, return
  * the best stop sequence for each `(route_id, direction_id)` pair.
  *
- * Source priority (per `docs/reconciliation-rules.md`):
+ * Source priority (per `docs/assemble-rules.md`):
  *   1. Transitous seed (`neary-gtfs#13` and `#15` succeed when the
  *      seed has the pattern)
  *   2. Tranzy (`#13`/`#15` are *fixed* by this — Tranzy fills the
