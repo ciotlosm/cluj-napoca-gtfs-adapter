@@ -56,7 +56,7 @@ export function reconcileTripsAndStopTimes(input) {
   /** @type {string[]} */
   const localWarnings = [];
 
-  for (const [routeShortName, byService] of input.byRouteService.entries()) {
+for (const [routeShortName, byService] of input.byRouteService.entries()) {
     // Find the route row matching this short name (CSV uses short name; rows use route_id).
     const routeRow = findRouteByShortName(input.routesByRouteId, routeShortName);
     if (!routeRow) {
@@ -65,70 +65,94 @@ export function reconcileTripsAndStopTimes(input) {
     }
     const routeId = routeRow.route_id;
 
+    // Headers (in/out_stop_name) are per-route, not per-service-day —
+    // every CSV for the same route publishes the same two stop labels.
+    // Pick the first non-empty CSV for the origin-validation pass so
+    // we don't emit the warning once per service day (LV+S+D would
+    // otherwise triple-print the same mismatch).
+    let headersCsv = null;
+    for (const csv of byService.values()) {
+      if (csv) { headersCsv = csv; break; }
+    }
+    if (!headersCsv) continue;
+
+    // Pre-compute the per-direction "plan" (pattern + orderedStops +
+    // origin-validation result) ONCE, then reuse for every service day.
+    // `plan[dir]` is null when the route has no pattern for that dir
+    // (warnings are already emitted).
+    /** @type {Map<number, any>} */
+    const plans = new Map();
+    for (const dir of [0, 1]) {
+      const key = `${routeId}|${dir}`;
+      const seedPattern = input.seedPatterns.get(key);
+      const tranzyPattern = input.tranzyPatterns.get(key);
+      const pattern = tranzyPattern ?? seedPattern;
+      if (!pattern || pattern.stops.length === 0) {
+        // No pattern yet — we'll emit "No pattern" once we know there
+        // are departures in this direction (in the service-day loop).
+        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: true, headsign: null });
+        continue;
+      }
+      const orderedStops = pattern.stops
+        .map((s) => {
+          const stop = input.stopsByStopId.get(s.stopId);
+          if (!stop) return null;
+          const lat = parseFloat(stop.stop_lat);
+          const lon = parseFloat(stop.stop_lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          // Preserve the source's stop_sequence — it's the authoritative
+          // value from the upstream GTFS source (Transitous seed or
+          // Tranzy). Re-numbering with a sequential index would discard
+          // any non-contiguous numbering the operator uses (e.g. gaps
+          // for dwell-only stops, odd-numbered extras).
+          return { stopId: stop.stop_id, sequence: s.sequence, lat, lon, name: stop.stop_name };
+        })
+        .filter(Boolean);
+      if (orderedStops.length === 0) {
+        plans.set(dir, { pattern: null, orderedStops: null, csvOriginTrustable: true, headsign: null });
+        continue;
+      }
+      // Origin validation (per CTP CSV convention):
+      //   - in_stop_name  = origin of col 0 buses  = first stop of dir 0
+      //   - out_stop_name = origin of col 1 buses  = first stop of dir 1
+      // (The other terminal is the destination of that direction and
+      // is what we use as the headsign — see csvHeadsign below.)
+      // If the origin doesn't match, the direction assignment may be
+      // wrong — surface a strong warning ONCE per (route, dir), not
+      // once per service day.
+      const expectedOriginName = orderedStops[0]?.name ?? null;
+      const csvOriginName = dir === 0 ? headersCsv.inStopName : headersCsv.outStopName;
+      const csvOriginTrustable = terminalNamesMatch(expectedOriginName, csvOriginName);
+      if (!csvOriginTrustable) {
+        localWarnings.push(
+          `CSV origin mismatch: ${routeShortName} dir=${dir} — ` +
+          `pattern first stop is "${expectedOriginName}", CSV column header says "${csvOriginName}". ` +
+          `Direction assignment may be wrong; trip times for this direction should be reviewed. ` +
+          `Skipping CSV terminal name as headsign fallback for this route.`,
+        );
+      }
+      const csvHeadsign = dir === 0 ? headersCsv.outStopName : headersCsv.inStopName;
+      const headsign = pattern.headsign
+        || (csvOriginTrustable ? csvHeadsign : null)
+        || routeRow.route_long_name
+        || routeShortName;
+      const shape = (pattern.shapeId && input.shapesById.get(pattern.shapeId)) || [];
+      plans.set(dir, { pattern, orderedStops, csvOriginTrustable, headsign, shape });
+    }
+
     for (const [serviceId, csv] of byService.entries()) {
       const dirs = [
-        { dir: 0, departures: csv.departures.dir0, csvHeadsign: csv.outStopName },
-        { dir: 1, departures: csv.departures.dir1, csvHeadsign: csv.inStopName },
+        { dir: 0, departures: csv.departures.dir0 },
+        { dir: 1, departures: csv.departures.dir1 },
       ];
-      for (const { dir, departures, csvHeadsign } of dirs) {
+      for (const { dir, departures } of dirs) {
         if (!departures || departures.length === 0) continue;
-        const key = `${routeId}|${dir}`;
-        const seedPattern = input.seedPatterns.get(key);
-        const tranzyPattern = input.tranzyPatterns.get(key);
-        const pattern = seedPattern ?? tranzyPattern;
-        if (!pattern || pattern.stops.length === 0) {
+        const plan = plans.get(dir);
+        if (!plan || !plan.pattern) {
           localWarnings.push(`No pattern for ${routeShortName} (${routeId}) dir=${dir} — dropping ${departures.length} departures`);
           continue;
         }
-        const orderedStops = pattern.stops
-          .map((s) => {
-            const stop = input.stopsByStopId.get(s.stopId);
-            if (!stop) return null;
-            const lat = parseFloat(stop.stop_lat);
-            const lon = parseFloat(stop.stop_lon);
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-            // Preserve the source's stop_sequence — it's the authoritative
-            // value from the upstream GTFS source (Transitous seed or
-            // Tranzy). Re-numbering with a sequential index would discard
-            // any non-contiguous numbering the operator uses (e.g. gaps
-            // for dwell-only stops, odd-numbered extras).
-            return { stopId: stop.stop_id, sequence: s.sequence, lat, lon, name: stop.stop_name };
-          })
-          .filter(Boolean);
-        if (orderedStops.length === 0) {
-          localWarnings.push(`All stops for ${routeShortName} dir=${dir} missing coords; dropping`);
-          continue;
-        }
-
-// Validate CSV origin-label against the resolved pattern's FIRST
-        // stop. Per CTP's CSV convention:
-//   - `in_stop_name`  = origin of col 0 buses  = first stop of dir 0
-//   - `out_stop_name` = origin of col 1 buses  = first stop of dir 1
-//   - (The other terminal is the destination of that direction;
-//    "out_stop_name" is also the last stop of dir 0 trips, which is
-//    why we use it as the headsign.)
-// If the origin doesn't match, the direction assignment is wrong —
-// the catalog's dir 0 might actually be what the CSV publishes in
-// col 1 (or vice versa), and trip times would land on the wrong
-// direction. Surface a strong warning.
-        const expectedOriginName = orderedStops[0]?.name ?? null;
-        const csvOriginName = dir === 0 ? csv.inStopName : csv.outStopName;
-        const csvOriginTrustable = terminalNamesMatch(expectedOriginName, csvOriginName);
-        if (!csvOriginTrustable) {
-          localWarnings.push(
-            `CSV origin mismatch: ${routeShortName} dir=${dir} — ` +
-            `pattern first stop is "${expectedOriginName}", CSV column header says "${csvOriginName}". ` +
-            `Direction assignment may be wrong; trip times for this direction should be reviewed. ` +
-            `Skipping CSV terminal name as headsign fallback for this route.`,
-          );
-        }
-
-        const shape = (pattern.shapeId && input.shapesById.get(pattern.shapeId)) || [];
-
-        const headsign = pattern.headsign
-          || (csvOriginTrustable ? csvHeadsign : null)
-          || routeRow.route_long_name
-          || routeShortName;
+        const { pattern, orderedStops, shape, headsign } = plan;
 
         for (let i = 0; i < departures.length; i++) {
           const depTime = departures[i];
@@ -257,25 +281,29 @@ function hhmmToSeconds(hhmm) {
  */
 function terminalNamesMatch(a, b) {
   if (!a || !b) return true;
-  // Normalize: lowercase + strip diacritics + keep only word characters.
-  // Handles the common CTP catalog mismatch where the CSV uses a
-  // shorter form ("P-ta Garii") and the catalog has the full form
-  // ("P-ța Gării Nord") — same physical stop, different precision.
-  const norm = (s) => s.toString().toLowerCase()
-    .replace(/ă/g, 'a').replace(/â/g, 'a').replace(/î/g, 'i')
-    .replace(/ș/g, 's').replace(/ț/g, 't')
-    .replace(/[^a-z0-9]/g, '');
-  const na = norm(a);
-  const nb = norm(b);
-  if (!na || !nb) return true; // empty after norm — treat as trustable
-  if (na === nb) return true;
-  // One contains the other (e.g. "ptagarii" ⊂ "ptagariinord").
-  if (na.includes(nb) || nb.includes(na)) return true;
-  // Share at least one significant token (≥ 4 chars). Catches
-  // abbreviations like "Taberei" / "Statia Taberei" or
-  // "Cluj-Napoca" / "Cluj Napoca".
-  const tokensA = new Set(na.match(/.{4,}/g) ?? []);
-  const tokensB = nb.match(/.{4,}/g) ?? [];
+  // Word-based token matching. After diacritic + case normalization,
+  // we split each name into words (separators: spaces, hyphens, parens,
+  // punctuation). Two stops match if they share at least one
+  // significant word (length >= 4) — this catches the common CTP
+  // cases where the catalog and the CSV use different precision or
+  // qualifiers for the same physical stop:
+  //   - "P-ta Garii" vs "P-ța Gării Nord"  → share "garii"
+  //   - "M Pensiunea Dalia Gilau Sud" vs "M-Motel Dalia Gilau Nord"
+  //     → share "dalia", "gilau" (the "Sud"/"Nord" qualifiers differ
+  //     but the underlying complex is the same — same transport
+  //     corridor, different endpoints)
+  // Single-character tokens ("M" prefix for metropolitan lines) are
+  // ignored to avoid false positives.
+  const tokenize = (s) => {
+    const normalized = s.toString().toLowerCase()
+      .replace(/ă/g, 'a').replace(/â/g, 'a').replace(/î/g, 'i')
+      .replace(/ș/g, 's').replace(/ț/g, 't');
+    return new Set((normalized.match(/[a-z0-9]+/g) ?? [])
+      .filter((t) => t.length >= 4));
+  };
+  const tokensA = tokenize(a);
+  const tokensB = tokenize(b);
+  if (tokensA.size === 0 || tokensB.size === 0) return true;
   for (const t of tokensB) {
     if (tokensA.has(t)) return true;
   }
