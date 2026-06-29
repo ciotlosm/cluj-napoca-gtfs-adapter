@@ -15,7 +15,7 @@ This enables a chain like:
 
 ```
 cluj-napoca-gtfs-adapter  ──►  neary-gtfs  ──►  binaries  ──►  neary app
-        (static feed)              (SQLite +       (jsDelivr)
+        (static feed)              (SQLite +       (GitHub raw)
                                    SQLite regen)
 ```
 
@@ -80,7 +80,7 @@ downloads the URL instead of hitting Transitous for that feed.
   "enhances": "Cluj-Napoca",
   "source": {
     "type": "remote",
-    "url": "https://cdn.jsdelivr.net/gh/ciotlosm/cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip",
+    "url": "https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip",
     "etag": "optional, for cache validation"
   },
   "license": { ... }
@@ -129,7 +129,7 @@ future:   transitous ← [cluj-napoca-gtfs-adapter registered upstream]
 - **Multiple remote sources for one feed.** The remote source is a
   single URL. If we ever want to merge multiple zips into one feed, that's
   a bigger refactor (maybe `source.type === "merged"`).
-- **Authentication on the remote URL.** jsDelivr-served URLs are
+- **Authentication on the remote URL.** GitHub-raw URLs are
   unauthenticated. If we ever host on a private CDN, add a `headers`
   field to the source config later.
 

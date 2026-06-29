@@ -42,6 +42,25 @@ jobs:
           TRANZY_API_KEY: ${{ secrets.TRANZY_API_KEY }}
           TRANZY_AGENCY_ID: '2'
 
+      - name: CSV parse smoke test (full network)
+        # Scrapes every CTP CSV, runs them through the production parser,
+        # fails the build if any cell is unrecognized (i.e. the #15 fix
+        # needs extending).
+        run: npm run smoke:csv
+
+      - name: GTFS-RT trip-ID parity check
+        # Fetches the live RT feed and asserts trip_ids match our
+        # canonical pattern. Fails loudly if the upstream RT feed
+        # changes its ID scheme — that's what would silently break
+        # the neary app's GTFS-RT JOIN otherwise.
+        run: npm run smoke:rt
+        env:
+          RT_PARITY_URL: ${{ vars.RT_PARITY_URL }}
+          # Fail the build if the RT feed is unreachable OR its trip_ids
+          # don't match. CI-only — keep RT_PARITY_FAIL_ON_FETCH_ERROR=0
+          # locally so dev iteration isn't blocked by transient outages.
+          RT_PARITY_FAIL_ON_FETCH_ERROR: '1'
+
       - name: Publish to binaries branch
         run: |
           DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -76,6 +95,6 @@ jobs:
       - name: Smoke-test the published URL (next day)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          URL="https://cdn.jsdelivr.net/gh/ciotlosm/cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip"
+          URL="https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip"
           echo "Validating $URL"
           curl -sI "$URL" | head -5

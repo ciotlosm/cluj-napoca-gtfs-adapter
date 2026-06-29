@@ -149,7 +149,7 @@ ever wants to publish the FOL route-planner as a downstream consumer of
 this adapter, the swap would be:
 
 1. Replace `TranzyService` with a fetcher for `cluj-napoca.gtfs.zip`
-   from jsDelivr.
+   from GitHub raw.
 2. Replace `GraphBuilder` with a consumer of `shapes.txt`, `trips.txt`,
    `stop_times.txt`.
 3. Keep `PathFinder` + `FolEngine` + `Prover9/Mace4` as-is.

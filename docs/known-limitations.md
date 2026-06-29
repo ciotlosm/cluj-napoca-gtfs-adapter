@@ -161,18 +161,32 @@ warning when a feed has multiple `agency.txt` rows with different
 timezones — we implement that check but do not act on it (single-agency
 feeds only).
 
-## 8. `cluj-rt-feed.gtfs.ro` trip-id parity is a contract, not verified
+## 8. ~~`cluj-rt-feed.gtfs.ro` trip-id parity is a contract, not verified~~ — IMPLEMENTED in v0.2
 
 We generate trip IDs in the canonical CTP format
 `${route_id}_${dir}_${serviceId}_${seq}_${HHMM}` that matches what
-`neary#108` documents for GTFS-RT JOIN. We do **not** have a live test
-that fetches the RT feed and asserts equality — this is a manual
-verification step. If the upstream RT feed changes its ID format
-silently, our JOINs break.
+`neary#108` documents for GTFS-RT JOIN. We **do** have a live CI check
+that fetches the RT feed and asserts the pattern.
 
-**Future:** add a build-time probe that fetches the RT feed, picks a
-random trip, and asserts that the trip_id pattern matches what we'd
-generate. Skip the probe if the feed is unreachable.
+Run locally:
+
+```bash
+RT_PARITY_URL=https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb \
+  npm run smoke:rt
+```
+
+In CI, the step runs with `RT_PARITY_FAIL_ON_FETCH_ERROR=1` — the
+build fails if either (a) the RT feed is unreachable, or (b) any
+sampled `trip_id` doesn't match the canonical pattern. Both were
+silent-breakage vectors before this check existed.
+
+Default URL: `https://cluj-rt-feed.gtfs.ro/vehicle_positions.pb`
+Override via `RT_PARITY_URL` env var. Sample size capped at 50 entities
+by default (`RT_PARITY_MAX_ENTITIES`).
+
+If the check fails, the error message prints up to 20 offending
+trip_ids and points at `makeTripId()` in `src/reconcile/trips.js` as
+the fix location.
 
 ## 9. README "limitations" section is the same as this doc
 

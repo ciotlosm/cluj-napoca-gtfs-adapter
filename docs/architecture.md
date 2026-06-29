@@ -10,7 +10,7 @@ Produce a **single** reconciled GTFS Schedule zip for CTP Cluj-Napoca
 - **CTP CSV timetables** — authoritative departure times
 
 …and is **always available** at a stable URL (GitHub Pages `binaries`
-branch, via `jsDelivr`) so the [neary](https://github.com/ciotlosm/neary)
+branch, via GitHub raw) so the [neary](https://github.com/ciotlosm/neary)
 PWA can consume it like any other GTFS source.
 
 ## Why three sources?
@@ -85,7 +85,7 @@ get a feed that's *complete*, *fresh*, and *correct*.
                              ▼
                   ┌──────────────────────┐
                   │  GitHub `binaries`   │
-                  │  branch / jsDelivr   │
+                  │  branch / GitHub raw  │
                   │  CDN                 │
                   └──────────────────────┘
 ```
@@ -174,8 +174,8 @@ UTC import). Steps:
 3. `node src/cli.js build` with `TRANZY_API_KEY` from repo secret.
 4. Push `output/cluj-napoca.gtfs.zip` to the `binaries` branch (orphan,
    same pattern as `neary-gtfs/.github/workflows/daily.yml`).
-5. jsDelivr serves it at
-   `https://cdn.jsdelivr.net/gh/ciotlosm/cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip`.
+5. GitHub raw serves it at
+   `https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip`.
 
 The `neary-gtfs` pipeline then mirrors this URL into its `binaries`
 branch's `feeds.json` (or directly via a `realtime.zip` style entry)

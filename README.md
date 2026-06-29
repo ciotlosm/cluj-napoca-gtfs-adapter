@@ -139,14 +139,24 @@ a verbatim citation from another project's code or docs).
 ## Deployment
 
 GitHub Actions cron at `30 0 * * *` UTC publishes the daily zip to the
-`binaries` branch, which jsDelivr serves at:
+`binaries` branch, served directly from GitHub raw:
 
 ```
-https://cdn.jsdelivr.net/gh/ciotlosm/cluj-napoca-gtfs-adapter@binaries/output/cluj-napoca.gtfs.zip
+https://raw.githubusercontent.com/ciotlosm/cluj-napoca-gtfs-adapter/binaries/output/cluj-napoca.gtfs.zip
 ```
 
-Requires a `TRANZY_API_KEY` repo secret. See
+Requires a `TRANZY_API_KEY` repo secret. Optional: `RT_PARITY_URL`
+repo variable to enable the GTFS-RT trip-ID parity check
+(`scripts/smoke-rt-parity.js`). See
 [`.github/workflows/daily.yml`](./.github/workflows/daily.yml).
+
+### CI smoke tests
+
+| Step | What it does | Fails the build when |
+|---|---|---|
+| `npm test` | Vitest unit + reconciliation tests with canned fixtures | any test fails |
+| `npm run smoke:csv` | Scrapes every CTP CSV (full network), parses each through the production parser | any cell is unrecognized (i.e. the `#15` fix needs extending) |
+| `npm run smoke:rt` | Fetches the live GTFS-RT feed, decodes VehiclePosition entities, asserts trip_ids match the canonical pattern | upstream changes the RT trip_id scheme, OR the RT feed is unreachable when `RT_PARITY_FAIL_ON_FETCH_ERROR=1` |
 
 ## License
 

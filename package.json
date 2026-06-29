@@ -12,6 +12,8 @@
     "build": "node src/cli.js build",
     "validate": "node src/cli.js validate",
     "reconcile:dry": "node src/cli.js reconcile --dry-run",
+    "smoke:csv": "node scripts/smoke-csv-parser.js",
+    "smoke:rt": "node src/verify-rt-parity.js",
     "test": "vitest --run",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "eslint": "^9.0.0",
+    "gtfs-realtime-bindings": "^1.4.0",
     "vitest": "^4.0.0"
   },
   "keywords": [
