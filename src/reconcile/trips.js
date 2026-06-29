@@ -60,6 +60,10 @@ export function reconcileTripsAndStopTimes(input) {
   // summary line at the end of the build (instead of one line per
   // (route, dir, service-day) — that would be hundreds of lines for
   // the full network and drown the build log).
+  // Also count fuzzy origin-matches for the build-log summary — high
+  // numbers mean the upstream sources use different naming conventions
+  // and we should ask the operators to align them.
+  let fuzzyMatchCount = 0;
   const noPatternStats = {
     bothDirsTranzyMissing: new Set(),   // route: no pattern in Tranzy
     bothDirsSeedMissing: new Set(),     // route: Tranzy has, but seed missing
@@ -168,6 +172,12 @@ export function reconcileTripsAndStopTimes(input) {
         : false;
       const fuzzy = exact ? true : terminalNamesMatch(expectedOriginName, csvOriginName);
       perDirMatch.push({ dir, exact, fuzzy });
+      // Track fuzzy matches (not exact) for the build-log summary.
+      // Operators want to know how much of the catalog ↔ CSV alignment
+      // is being salvaged by fuzzy token matching — high numbers mean
+      // the upstream sources use different naming conventions and we
+      // should ask the operators to align them.
+      if (fuzzy && !exact) fuzzyMatchCount++;
       const csvOriginTrustable = exact || fuzzy;
       const csvHeadsign = dir === 0 ? outLabel : inLabel;
       const headsign = pattern.headsign
@@ -355,6 +365,12 @@ export function reconcileTripsAndStopTimes(input) {
   // one per (route, dir, service-day). Tells the user how many routes
   // lost trip generation because Tranzy/seed patterns were missing,
   // and which source is to blame.
+  if (fuzzyMatchCount > 0) {
+    localWarnings.push(
+      `origin validation: ${fuzzyMatchCount} (route, dir) pair(s) used fuzzy word-token matching to align catalog ↔ CSV origin labels ` +
+      `(not exact match). See docs/quirks-and-rules.md#fuzzy-origin-matching.`,
+    );
+  }
   const totalRoutes = noPatternStats.bothDirsBothMissing.size
     + noPatternStats.bothDirsTranzyMissing.size
     + noPatternStats.bothDirsSeedMissing.size
