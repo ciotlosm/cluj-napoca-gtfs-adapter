@@ -399,7 +399,12 @@ export function reconcileTripsAndStopTimes(input) {
         } else if (swapBothFuzzy) {
           tier = 'swap-fuzzy-both';
           tierMatched = true;
-          summary = warnMsg(
+          // INFO: trips emitted with the correct physical direction via
+          // the swap. The fuzzy match means the operator's spelling differs
+          // (e.g. "Alverna" vs "Disp. Alverna") but the swap itself is
+          // unambiguous — both cross-pairs matched. Cosmetic difference,
+          // not data loss.
+          summary = info(
             `CSV direction reversed (fuzzy) for route_short_name "${routeShortName}": ` +
             `csv col 0 origin "${inLabel}" ≈ catalog dir 1 origin "${cat1.name}" (from ${cat1.source}); ` +
             `csv col 1 origin "${outLabel}" ≈ catalog dir 0 origin "${cat0.name}" (from ${cat0.source}). ` +
