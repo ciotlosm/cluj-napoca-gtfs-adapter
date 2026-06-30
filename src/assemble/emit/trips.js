@@ -740,6 +740,13 @@ function hhmmToSeconds(hhmm) {
  * Returns `true` when at least one side is empty (can't validate either
  * way — caller should treat the CSV terminal as "trustable enough").
  */
+export function normalizeStopName(s) {
+  if (!s) return '';
+  return s.toString().toLowerCase()
+    .replace(/ă/g, 'a').replace(/â/g, 'a').replace(/î/g, 'i')
+    .replace(/ș/g, 's').replace(/ț/g, 't');
+}
+
 export function terminalNamesMatch(a, b) {
   if (!a || !b) return true;
   // Word-based token matching. After diacritic + case normalization,
@@ -781,18 +788,6 @@ export function terminalNamesMatch(a, b) {
     }
   }
   return sharedCount >= 2;
-}
-
-/**
- * Diacritic + lowercase normalization shared by `findLabelInPattern`
- * and the placeholder-detection helper below. Single source of truth
- * for what "matches" means — change one, change both.
- */
-function normalizeStopName(s) {
-  if (!s) return '';
-  return s.toString().toLowerCase()
-    .replace(/ă/g, 'a').replace(/â/g, 'a').replace(/î/g, 'i')
-    .replace(/ș/g, 's').replace(/ț/g, 't');
 }
 
 /**
