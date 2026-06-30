@@ -24,7 +24,8 @@ import { reconcileCalendar, calendarToTxt } from './derive/calendar.js';
 import { runDataQualityChecks } from './check/data-quality.js';
 import { tranzyPatternsByRouteDir, seedPatternsByRouteDir } from './derive/patterns.js';
 import { reconcileTranzyFallback } from './emit/tranzy-fallback.js';
-import { warnMsg } from '../lib/log-severity.js';
+import { buildNetworks, formatNetworkUsageSummary } from './emit/networks.js';
+import { warnMsg, info } from '../lib/log-severity.js';
 
 /**
  * @param {{
@@ -166,6 +167,16 @@ export function reconcile({ seed, tranzy, csv, options = {} }) {
   const agencyTxt = ensureAgencyTimezone(seed.agencyTxt, options.timezone ?? 'Europe/Bucharest');
   const allTripRows = [...tripRows, ...freqTripRows, ...fallbackTripRows];
   const allStopTimeRows = [...stopTimeRows, ...freqStopTimeRows, ...fallbackStopTimeRows];
+  // Networks + route_networks — derived from the classified `route_desc`
+  // values. The classification already ran inside `reconcileRoutes()`
+  // (Step 4) before this point, so `routes` here have the final desc
+  // and long_name. See `src/assemble/merge/routeCategory.js` for the
+  // pattern table and `src/assemble/emit/networks.js` for emission.
+  const { networksTxt, routeNetworksTxt, networkUsage } = buildNetworks(routes);
+  if (networkUsage.size > 0) {
+    warnings.push(info(`networks: ${formatNetworkUsageSummary(networkUsage)}`));
+  }
+
   const files = {
     'agency.txt': agencyTxt,
     'routes.txt': routesToTxt(routes),
@@ -175,6 +186,8 @@ export function reconcile({ seed, tranzy, csv, options = {} }) {
     'stop_times.txt': stopTimesToTxt(allStopTimeRows),
     'calendar.txt': calendarToTxt(calendarRows),
     'frequencies.txt': frequenciesToTxt(frequencyRows),
+    'networks.txt': networksTxt,
+    'route_networks.txt': routeNetworksTxt,
     'feed_info.txt': feedInfoTxt({
       buildDate: options.buildDate ?? new Date(),
       startDate: calendarRows[0]?.start_date,
@@ -195,6 +208,7 @@ export function reconcile({ seed, tranzy, csv, options = {} }) {
     stopTimes: allStopTimeRows.length,
     frequencyAnchors: frequencyRows.length,
     calendarServices: calendarRows.length,
+    networks: networkUsage.size,
     tripDiagnostics,
   };
 

@@ -184,6 +184,89 @@ describe('reconcile', () => {
     // And the Tranzy fallback warning should be present.
     expect(warnings.some((w) => w.message.includes('Tranzy /trips fallback'))).toBe(true);
   });
+
+  it('emits networks.txt + route_networks.txt with category-classified routes (neary#125, neary#129)', () => {
+    // Synthesize a Tranzy response with one route per category so we can
+    // pin the file shape end-to-end without depending on the live catalog.
+    const tranzy = {
+      routes: [
+        { route_id: '93',  route_short_name: 'TE1',  route_long_name: 'Transport Elevi Manastur',             route_type: 3 },
+        { route_id: '145', route_short_name: 'M76A', route_long_name: 'TE2 Floresti str. Somesului',          route_type: 3 },
+        { route_id: '68',  route_short_name: 'M26U', route_long_name: 'Uzinei Electrice - Floresti / Cetate (untold)', route_type: 3 },
+        { route_id: '15',  route_short_name: '25N',  route_long_name: 'Str. Bucium - Str. Unirii',            route_type: 11 },
+        { route_id: '205', route_short_name: 'CS',   route_long_name: 'CURSA SPECIALA',                       route_type: 3 },
+        // Regular urban — no category, should NOT appear in route_networks.txt.
+        { route_id: '1',   route_short_name: '1',    route_long_name: 'Str. Bucium - P-ta 1 Mai',             route_type: 3 },
+      ],
+      stops: [],
+      trips: [
+        { trip_id: 't-93',  route_id: '93',  direction_id: 0, trip_headsign: '' },
+        { trip_id: 't-145', route_id: '145', direction_id: 0, trip_headsign: '' },
+        { trip_id: 't-68',  route_id: '68',  direction_id: 0, trip_headsign: '' },
+        { trip_id: 't-15',  route_id: '15',  direction_id: 0, trip_headsign: '' },
+        { trip_id: 't-205', route_id: '205', direction_id: 0, trip_headsign: '' },
+        { trip_id: 't-1',   route_id: '1',   direction_id: 0, trip_headsign: '' },
+      ],
+      stop_times: [
+        { trip_id: 't-93',  stop_id: 'A', stop_sequence: 0 },
+        { trip_id: 't-145', stop_id: 'A', stop_sequence: 0 },
+        { trip_id: 't-68',  stop_id: 'A', stop_sequence: 0 },
+        { trip_id: 't-15',  stop_id: 'A', stop_sequence: 0 },
+        { trip_id: 't-205', stop_id: 'A', stop_sequence: 0 },
+        { trip_id: 't-1',   stop_id: 'A', stop_sequence: 0 },
+      ],
+      shapes: [],
+      calendar: [],
+    };
+    const { files } = reconcile({ seed: buildFixtureSeedMemory(), tranzy, csv, options: { buildDate: new Date('2026-06-29') } });
+
+    // The seed ships with route M26 (Piata Garii - Selimbar) which
+    // classifies as metroline. So networks.txt also gets a metroline
+    // row from the seed — pin both seed-derived and Tranzy-derived
+    // categories here.
+    expect(files['networks.txt']).toBe(
+      'network_id,network_name\n' +
+      'special,Cursa Speciala\n' +
+      'school,Transport Elevi\n' +
+      'festival,Untold\n' +
+      'night,Night service\n' +
+      'metroline,Metroline\n',
+    );
+
+    // route_networks.txt — one row per categorized route. Regular urban
+    // route 1 is excluded; M26 (seed) is included as metroline.
+    const rnLines = files['route_networks.txt'].trim().split('\n');
+    expect(rnLines[0]).toBe('network_id,route_id');
+    expect(rnLines).toContain('school,93');
+    expect(rnLines).toContain('school,145');
+    expect(rnLines).toContain('festival,68');
+    expect(rnLines).toContain('night,15');
+    expect(rnLines).toContain('special,205');
+    expect(rnLines).toContain('metroline,M26');
+    expect(rnLines).not.toContainEqual(expect.stringMatching(/^[^,]*,1$/));
+
+    // routes.txt — route_desc carries the human label, route_long_name
+    // is in start-end format (or empty for CS).
+    const routesTxt = files['routes.txt'];
+    const r93row = routesTxt.split('\n').find((l) => l.startsWith('93,'));
+    expect(r93row).toMatch(/,Manastur,Transport Elevi,/);
+    const r145row = routesTxt.split('\n').find((l) => l.startsWith('145,'));
+    // "TE2 Floresti " prefix stripped → "str. Somesului"
+    expect(r145row).toMatch(/,str\. Somesului,Transport Elevi,/);
+    const r68row = routesTxt.split('\n').find((l) => l.startsWith('68,'));
+    // Trailing "(untold)" stripped from long_name
+    expect(r68row).toMatch(/,Uzinei Electrice - Floresti \/ Cetate,Untold,/);
+    const r15row = routesTxt.split('\n').find((l) => l.startsWith('15,'));
+    expect(r15row).toMatch(/,Str\. Bucium - Str\. Unirii,Night service,/);
+    const r205row = routesTxt.split('\n').find((l) => l.startsWith('205,'));
+    // CS long_name cleared, route_desc = "Cursa Speciala"
+    expect(r205row).toMatch(/,CS,,Cursa Speciala,/);
+    // Regular urban: empty route_desc. The field after the destination
+    // string is route_desc — index 4 (0=route_id, 1=agency_id,
+    // 2=route_short_name, 3=route_long_name, 4=route_desc).
+    const r1row = routesTxt.split('\n').find((l) => l.startsWith('1,'));
+    expect(r1row.split(',')[4]).toBe('');
+  });
 });
 
 function hhmmssToSeconds(hms) {
