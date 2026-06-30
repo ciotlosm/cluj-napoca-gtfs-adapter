@@ -5,6 +5,8 @@
  * to clean up Tranzy's messy `route_long_name` into start-end format.
  */
 
+import { terminalNamesMatch, normalizeStopName } from '../emit/trips.js';
+
 /**
  * The classifier runs once at assemble time; consumers (neary) just read
  * the structured fields from `routes.txt` + `networks.txt` +
@@ -565,6 +567,7 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
   let longNameUnresolvedCount = 0;
   let descCleanedCount = 0;
   let descFromCleanedCount = 0;
+  let preservedButSuspiciousCount = 0;
   let descFromStrippedCount = 0;
 
   for (const row of routes) {
@@ -709,6 +712,52 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
         // we'd surface the contradictory terminal to consumers).
         row.route_desc = '';
       }
+
+      // Operator-visibility log: desc was preserved (terminal IS on
+      // the route's pattern) but doesn't match long_name's published
+      // destination. Operator may have intentionally referenced a
+      // landmark the bus passes through, or it may be partial stale
+      // data. Surface per-route as INFO so it's visible in the build
+      // log without losing the data.
+      //
+      // Match threshold for "doesn't match longLast" is exact equality
+      // (after normalization), NOT fuzzy — otherwise "P-ta Garii" vs
+      // "P-ta Garii Noi" would be treated as matching (shared "garii")
+      // and we'd silently swallow the "Noi" qualifier mismatch.
+      if (cleanedDesc && cleanedDesc !== cleanedLong && routeStopNames) {
+        const descParts = cleanedDesc.split(' - ');
+        const longParts = cleanedLong.split(' - ');
+        if (descParts.length >= 2 && longParts.length >= 2) {
+          const descFirst = descParts[0];
+          const descSecond = descParts[1];
+          const longFirst = longParts[0];
+          const longLast = longParts[1];
+          const descFirstMatches = tokenOverlap(descFirst, longFirst);
+          const descSecondExactMatches = normalizeStopName(descSecond)
+            === normalizeStopName(longLast);
+          if (descFirstMatches && !descSecondExactMatches) {
+            // Same-line desc, but destination differs from long_name.
+            // Verify the terminal is on the route pattern (otherwise
+            // it'd already have been dropped by the stale check).
+            for (const stopName of routeStopNames) {
+              if (tokenOverlap(descSecond, stopName)) {
+                preservedButSuspiciousCount++;
+                warnings.push({
+                  severity: 'info',
+                  message:
+                    `route_short_name "${row.route_short_name}": desc preserved but terminal differs from long_name's destination. ` +
+                    `desc="${cleanedDesc}" long_name="${cleanedLong}". ` +
+                    `Terminal is on the route's pattern (likely a landmark the bus passes through) but doesn't match the published endpoint. ` +
+                    `Operator: confirm whether the desc is intentional or stale. ` +
+                    `See docs/quirks-and-rules.md#stale-route_desc-vs-route_long_name.`,
+                  meta: { route: row.route_short_name, kind: 'preserved-but-suspicious' },
+                });
+                break;
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -731,6 +780,9 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
           `derived ${longNameDerivedCount} long_name(s) (desc or stops fallback)` +
           (longNameUnresolvedCount > 0 ? `, ${longNameUnresolvedCount} unresolved` : '') +
           `, surfaced ${descFromCleanedCount} cleaned desc + ${descFromStrippedCount} parenthetical(s) (both categorized + un-categorized)` +
+          (preservedButSuspiciousCount > 0
+            ? `, ${preservedButSuspiciousCount} preserved-but-suspicious desc(s) — operator review recommended`
+            : '') +
           ' — see networks.txt + route_networks.txt',
       });
     }
