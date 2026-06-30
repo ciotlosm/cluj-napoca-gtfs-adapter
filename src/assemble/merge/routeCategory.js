@@ -383,14 +383,22 @@ function titleCaseAnnotation(s) {
  *      desc (when long_name ended up empty after cleanup but desc has
  *      data) → `<first stop> - <last stop>` from stop_times.
  *
- *   5. **route_desc strategy**:
+ *   5. **route_desc strategy** (Marius's "all useful information in
+ *      Description" rule):
+ *      - Stripped parenthetical content (title-cased) is computed once
+ *        as a shared pool, with anything matching a category label
+ *        filtered out (so we don't redundantly surface "Untold" when
+ *        the route is already classified as festival).
  *      - If classified (≥1 category): `route_desc` is the comma-joined
  *        category labels (`"Transport Elevi, Metropolitana"` for 1:many).
- *        Parenthetical content that overlaps with a category label is
- *        intentionally dropped (already represented).
- *      - Else if cleaned desc has data: `route_desc` is the cleaned desc,
- *        possibly combined with stripped parenthetical content (title-cased)
- *        that provides additional info beyond the cleaned desc.
+ *        If the parenthetical pool has non-redundant content, it's
+ *        appended via " | " — e.g. TE routes whose desc ends in
+ *        "(Floresti)" → `"Transport Elevi | Floresti"`, so riders see
+ *        which commune the school bus serves.
+ *      - Else if cleaned desc has data: `route_desc` is the cleaned
+ *        desc, possibly combined with stripped parenthetical content
+ *        (title-cased) that provides additional info beyond the
+ *        cleaned desc.
  *
  * **1:many semantics** live in `route_networks.txt` — one row per
  * (network_id, route_id) so consumers see the n:m mapping natively.
@@ -467,9 +475,44 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
     }
     row.route_long_name = resolvedLong;
 
-    // 5. route_desc strategy: categorized labels > cleaned desc > ''.
+    // 5. route_desc strategy.
+    //
+    // Build a unified pool of "useful" parenthetical content — captured
+    // from long_name and/or desc cleanup, title-cased, with anything that
+    // matches a category label filtered out (so we don't redundantly
+    // surface "Untold" when the route is already classified as festival).
+    // Dedupe since the same parenthetical often appears in both fields.
+    //
+    // This pool feeds BOTH branches below:
+    //   - Categorized: appended to category labels via " | " (e.g. TE
+    //     routes whose desc ends in "(Floresti)" → "Transport Elevi |
+    //     Floresti", so riders see which commune the school bus serves).
+    //   - Un-categorized: appended to cleaned desc when both contribute
+    //     unique info, or used as the desc when cleanedDesc mirrors
+    //     cleanedLong (the 88A case).
+    const usefulStripped = [...strippedLong, ...strippedDesc]
+      .filter((s) => s.length > 0)
+      .filter((s) => !CATEGORIES.some((c) => c.label.toLowerCase() === s.toLowerCase()))
+      .map(titleCaseAnnotation);
+
+    const seen = new Set();
+    const dedupedStripped = usefulStripped.filter((s) => {
+      if (seen.has(s)) return false;
+      seen.add(s);
+      return true;
+    });
+
     if (categories.length > 0) {
-      row.route_desc = categories.map((c) => c.label).join(', ');
+      // Categorized. Base = comma-joined category labels (the primary
+      // signal for tools that don't read networks.txt). Append captured
+      // parenthetical content when it provides non-redundant info.
+      const base = categories.map((c) => c.label).join(', ');
+      if (dedupedStripped.length > 0) {
+        row.route_desc = `${base} | ${dedupedStripped.join(', ')}`;
+        descFromStrippedCount++;
+      } else {
+        row.route_desc = base;
+      }
     } else {
       // Un-categorized. Build desc from three sources, in priority order:
       //
@@ -490,25 +533,6 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
       //      Mostly cosmetic; preserves the "desc is a mirror of
       //      long_name" behavior for routes where Tranzy duplicated
       //      the same string in both fields.
-      //
-      // The "BUT ONLY IF, left over is not something that we used for
-      // categories" guard filters stripped content whose lowercased
-      // form matches a category label. Defensive — for a route that
-      // reached the un-categorized branch, no category pattern matched,
-      // so any overlap is incidental.
-      const usefulStripped = [...strippedLong, ...strippedDesc]
-        .filter((s) => s.length > 0)
-        .filter((s) => !CATEGORIES.some((c) => c.label.toLowerCase() === s.toLowerCase()))
-        .map(titleCaseAnnotation);
-
-      // Dedupe (same parenthetical content may appear in both fields).
-      const seen = new Set();
-      const dedupedStripped = usefulStripped.filter((s) => {
-        if (seen.has(s)) return false;
-        seen.add(s);
-        return true;
-      });
-
       const descHasUniqueInfo = cleanedDesc && cleanedDesc !== cleanedLong;
 
       if (descHasUniqueInfo) {
@@ -536,28 +560,28 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
     }
   }
 
-  // Build-log INFO summary. Per-row detail is in routes.txt + networks.txt;
-  // this is the one-liner for the human reading the build log.
-  if (
-    classifiedCount > 0 ||
-    longNameCleanedCount > 0 ||
-    longNameDerivedCount > 0 ||
-    longNameUnresolvedCount > 0 ||
-    descCleanedCount > 0 ||
-    descFromCleanedCount > 0 ||
-    descFromStrippedCount > 0
-  ) {
-    warnings.push({
-      severity: 'info',
-      message:
-        `routes: classified ${classifiedCount} route(s), ${multiNetworkCount} with multiple networks, ` +
-        `cleaned ${longNameCleanedCount} long_name + ${descCleanedCount} desc, ` +
-        `derived ${longNameDerivedCount} long_name(s) (desc or stops fallback)` +
-        (longNameUnresolvedCount > 0 ? `, ${longNameUnresolvedCount} unresolved` : '') +
-        `, preserved ${descFromCleanedCount} cleaned desc + ${descFromStrippedCount} parentheticals on un-categorized routes` +
-        ' — see networks.txt + route_networks.txt',
-    });
-  }
+// Build-log INFO summary. Per-row detail is in routes.txt + networks.txt;
+    // this is the one-liner for the human reading the build log.
+    if (
+      classifiedCount > 0 ||
+      longNameCleanedCount > 0 ||
+      longNameDerivedCount > 0 ||
+      longNameUnresolvedCount > 0 ||
+      descCleanedCount > 0 ||
+      descFromCleanedCount > 0 ||
+      descFromStrippedCount > 0
+    ) {
+      warnings.push({
+        severity: 'info',
+        message:
+          `routes: classified ${classifiedCount} route(s), ${multiNetworkCount} with multiple networks, ` +
+          `cleaned ${longNameCleanedCount} long_name + ${descCleanedCount} desc, ` +
+          `derived ${longNameDerivedCount} long_name(s) (desc or stops fallback)` +
+          (longNameUnresolvedCount > 0 ? `, ${longNameUnresolvedCount} unresolved` : '') +
+          `, surfaced ${descFromCleanedCount} cleaned desc + ${descFromStrippedCount} parenthetical(s) (both categorized + un-categorized)` +
+          ' — see networks.txt + route_networks.txt',
+      });
+    }
 
   return {
     classifiedCount,

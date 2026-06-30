@@ -668,6 +668,32 @@ describe('applyRouteCategory — desc strategy', () => {
     // Single "Traseu M21", not duplicated.
     expect(routes[0].route_desc).toBe('Traseu M21');
   });
+
+  it('appends non-category parenthetical to categorized routes (TE + Floresti)', () => {
+    // Marius's PR feedback: "route_desc default = category labels +
+    // captured parenthetical content (human-readable title case), only
+    // when the parenthetical isn't already a category label." The TE
+    // routes whose Tranzy desc ends in "(Floresti)" — the Floresti
+    // commune is the destination of the school bus — get category
+    // label "Transport Elevi" PLUS the captured "Floresti" so riders
+    // see which corridor the school bus serves.
+    //
+    // Reproduces the live data shape: long_name = "TE1F" (the cleanup
+    // already happened upstream; desc still carries the original).
+    const routes = [
+      {
+        route_id: 'M75B',
+        route_short_name: 'TE1F',
+        route_long_name: 'TE1F',
+        route_desc: 'Liceul Dumitru Tautan - str. Avram Iancu (Floresti)',
+      },
+    ];
+    const warnings = [];
+    applyRouteCategory({ routes, warnings });
+    expect(routes[0].route_long_name).toBe('TE1F');
+    // Category label + non-redundant parenthetical joined with " | ".
+    expect(routes[0].route_desc).toBe('Transport Elevi | Floresti');
+  });
 });
 
 describe('getAllCategories — networks emission input', () => {
