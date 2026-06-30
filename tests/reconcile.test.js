@@ -233,29 +233,36 @@ describe('reconcile', () => {
       'metroline,Metropolitana\n',
     );
 
-    // route_networks.txt — one row per categorized route. Regular urban
-    // route 1 is excluded; M26 (seed) is included as metroline.
+    // route_networks.txt — one row per categorized route. M76A (route_id 145)
+    // is the signature 1:many case: school + metroline → two rows.
+    // Regular urban route 1 is excluded; M26 (seed) is included as metroline.
     const rnLines = files['route_networks.txt'].trim().split('\n');
     expect(rnLines[0]).toBe('network_id,route_id');
     expect(rnLines).toContain('school,93');
     expect(rnLines).toContain('school,145');
+    expect(rnLines).toContain('metroline,145'); // M76A also metroline
     expect(rnLines).toContain('festival,68');
     expect(rnLines).toContain('night,15');
     expect(rnLines).toContain('special,205');
     expect(rnLines).toContain('metroline,M26');
     expect(rnLines).not.toContainEqual(expect.stringMatching(/^[^,]*,1$/));
 
-    // routes.txt — route_desc carries the human label, route_long_name
-    // is in start-end format (or empty for CS).
+    // routes.txt — route_desc carries the human label(s) comma-separated
+    // for 1:many, route_long_name is in start-end format (or empty for CS).
     const routesTxt = files['routes.txt'];
     const r93row = routesTxt.split('\n').find((l) => l.startsWith('93,'));
     expect(r93row).toMatch(/,Manastur,Transport Elevi,/);
     const r145row = routesTxt.split('\n').find((l) => l.startsWith('145,'));
-    // "TE2 Floresti " prefix stripped → "str. Somesului"
-    expect(r145row).toMatch(/,str\. Somesului,Transport Elevi,/);
+    // M76A: "TE2 Floresti " stripped → "str. Somesului" (the Tranzy
+    // fixture's long_name doesn't have the " - Liceul D. Tautan"
+    // suffix; that's only in the unit-test fixture). route_desc carries
+    // BOTH school + metroline labels (comma-separated, so the CSV writer
+    // quotes the field).
+    expect(r145row).toMatch(/,str\. Somesului,(?:"Transport Elevi, Metropolitana"|Transport Elevi, Metropolitana),/);
     const r68row = routesTxt.split('\n').find((l) => l.startsWith('68,'));
-    // Trailing "(untold)" stripped from long_name
-    expect(r68row).toMatch(/,Uzinei Electrice - Floresti \/ Cetate,Untold,/);
+    // Trailing "(untold)" stripped from long_name. M26U is also
+    // metroline (M* prefix) → route_desc carries both labels.
+    expect(r68row).toMatch(/,Uzinei Electrice - Floresti \/ Cetate,(?:"Untold, Metropolitana"|Untold, Metropolitana),/);
     const r15row = routesTxt.split('\n').find((l) => l.startsWith('15,'));
     expect(r15row).toMatch(/,Str\. Bucium - Str\. Unirii,Noapte,/);
     const r205row = routesTxt.split('\n').find((l) => l.startsWith('205,'));

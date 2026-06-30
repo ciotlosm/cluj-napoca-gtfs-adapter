@@ -129,22 +129,29 @@ export const CATEGORIES = [
 ];
 
 /**
- * Classify a single route. Returns `null` for regular urban routes that
- * don't fit any category.
+ * Classify a single route, returning all matching categories in
+ * priority order (CATEGORIES declaration order). Empty array for
+ * regular urban routes that match nothing.
+ *
+ * **1:many is intentional**: a route can belong to multiple networks.
+ * The classic case is `M76A` — short_name is `M7[5-9][A-Z]?` (matches
+ * school) AND starts with `M\d` (matches metroline). One route, two
+ * networks. `route_networks.txt` carries the n:m mapping natively.
  *
  * @param {{ route_short_name?: string, route_long_name?: string, route_desc?: string }} row
- * @returns {{ id: string, label: string } | null}
+ * @returns {Array<{ id: string, label: string }>}
  */
 export function classifyRoute(row) {
   const s = (row.route_short_name ?? '').toString();
   const l = (row.route_long_name ?? '').toString();
   const d = (row.route_desc ?? '').toString();
+  const matches = [];
   for (const cat of CATEGORIES) {
     if (cat.match(s, l, d)) {
-      return { id: cat.id, label: cat.label };
+      matches.push({ id: cat.id, label: cat.label });
     }
   }
-  return null;
+  return matches;
 }
 
 /**
@@ -269,6 +276,27 @@ export function deriveLongNameFromStops({ routeId, allStopTimeRows, tripToRoute,
  * Apply classification + long_name cleanup + stop_times fallback to all
  * route rows in place. Single orchestrator-facing entry point.
  *
+ * **Order matters** (and is intentional, not arbitrary):
+ *
+ *   1. Classify against the **original** Tranzy values, BEFORE cleanup.
+ *      Why: `M76A`'s long_name `"TE2 Floresti str. Somesului - Liceul D.
+ *      Tautan"` carries the school-bus signal (`M7x` short_name + the
+ *      `^TE\d+\s+Floresti` substring). After cleanup strips that
+ *      prefix, the signal is gone — and `M76A` would silently lose its
+ *      school classification. So classify first.
+ *
+ *   2. Cleanup pass. Strip parentheticals, prefixes, etc. for the
+ *      `route_long_name` the consumer sees.
+ *
+ *   3. Stop_times fallback. If cleanup leaves `route_long_name` empty
+ *      (CS, annotation-only rows, Tranzy-missing), derive from
+ *      `<first stop> - <last stop>` of the longest trip.
+ *
+ * **1:many semantics**: `route_desc` carries the comma-separated labels
+ * of every matching category (`"Transport Elevi, Metropolitana"` for
+ * M76A). `route_networks.txt` gets one row per category so the n:m
+ * mapping is preserved in the GTFS-standard file.
+ *
  * @param {{
  *   routes: Array<{ route_id: string, route_short_name: string, route_long_name: string, route_desc: string }>,
  *   allStopTimeRows?: Array<{ trip_id: string, stop_id: string, stop_sequence: string|number }>,
@@ -278,6 +306,7 @@ export function deriveLongNameFromStops({ routeId, allStopTimeRows, tripToRoute,
  * }} input
  * @returns {{
  *   classifiedCount: number,
+ *   multiNetworkCount: number,
  *   longNameCleanedCount: number,
  *   longNameDerivedCount: number,
  *   longNameUnresolvedCount: number,
@@ -285,17 +314,27 @@ export function deriveLongNameFromStops({ routeId, allStopTimeRows, tripToRoute,
  */
 export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, stopsByStopId, warnings }) {
   let classifiedCount = 0;
+  let multiNetworkCount = 0;
   let longNameCleanedCount = 0;
   let longNameDerivedCount = 0;
   let longNameUnresolvedCount = 0;
 
   for (const row of routes) {
-    // 1. Text cleanup pass.
+    // 1. Classify against the ORIGINAL row (pre-cleanup). The school
+    //    pattern matches `M7x` in short_name, which survives cleanup —
+    //    but also `^TE\d+\s+Floresti` in long_name, which cleanup
+    //    strips. Order matters here.
+    const categories = classifyRoute(row);
+    if (categories.length > 0) classifiedCount++;
+    if (categories.length > 1) multiNetworkCount++;
+    row.route_desc = categories.map((c) => c.label).join(', ');
+
+    // 2. Cleanup pass on long_name.
     const originalLongName = row.route_long_name ?? '';
     const cleaned = cleanLongName(row);
     if (cleaned !== originalLongName) longNameCleanedCount++;
 
-    // 2. Fallback: if cleanup left it empty, derive from stop_times.
+    // 3. Fallback: if cleanup left it empty, derive from stop_times.
     let resolved = cleaned;
     if (!resolved) {
       const derived = deriveLongNameFromStops({
@@ -312,28 +351,28 @@ export function applyRouteCategory({ routes, allStopTimeRows = [], tripToRoute, 
       }
     }
     row.route_long_name = resolved;
-
-    // 3. Classify against the resolved long_name + the pre-classification
-    //    route_desc (Tranzy's original signal). Mutates route_desc.
-    const category = classifyRoute(row);
-    row.route_desc = category?.label ?? '';
-    if (category) classifiedCount++;
   }
 
-  // Build-log INFO summary. Per-row detail is in routes.txt; this is
-  // the one-liner for the human reading the build log.
+  // Build-log INFO summary. Per-row detail is in routes.txt + networks.txt;
+  // this is the one-liner for the human reading the build log.
   if (classifiedCount > 0 || longNameCleanedCount > 0 || longNameDerivedCount > 0 || longNameUnresolvedCount > 0) {
     warnings.push({
       severity: 'info',
       message:
-        `routes: classified ${classifiedCount} into networks, ` +
+        `routes: classified ${classifiedCount} route(s), ${multiNetworkCount} with multiple networks, ` +
         `cleaned ${longNameCleanedCount}, derived-from-stops ${longNameDerivedCount} long_name(s)` +
         (longNameUnresolvedCount > 0 ? `, ${longNameUnresolvedCount} unresolved (no stop_times fallback)` : '') +
-        ' — see networks.txt',
+        ' — see networks.txt + route_networks.txt',
     });
   }
 
-  return { classifiedCount, longNameCleanedCount, longNameDerivedCount, longNameUnresolvedCount };
+  return {
+    classifiedCount,
+    multiNetworkCount,
+    longNameCleanedCount,
+    longNameDerivedCount,
+    longNameUnresolvedCount,
+  };
 }
 
 /**

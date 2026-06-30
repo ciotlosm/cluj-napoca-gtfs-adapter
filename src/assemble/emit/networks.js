@@ -49,6 +49,11 @@ export function buildNetworks(routes) {
 
   // Build a lookup from label (which is what route_desc holds) to category.
   // Doing it via label keeps `route_desc == network_name` the contract.
+  // route_desc can be a single label ("Metropolitana") or comma-separated
+  // ("Transport Elevi, Metropolitana") for routes that match multiple
+  // categories — see applyRouteCategory in routeCategory.js. We split on
+  // comma and emit one route_networks.txt row per label so the n:m mapping
+  // survives intact.
   const byLabel = new Map(allCategories.map((c) => [c.label, c]));
 
   /** @type {Map<string, number>} */
@@ -60,10 +65,14 @@ export function buildNetworks(routes) {
   for (const r of routes) {
     const desc = (r.route_desc ?? '').toString();
     if (!desc) continue; // regular urban — no network assignment
-    const cat = byLabel.get(desc);
-    if (!cat) continue; // route_desc isn't a known label — shouldn't happen
-    networkUsage.set(cat.id, (networkUsage.get(cat.id) ?? 0) + 1);
-    routeNetworkRows.push(`${cat.id},${r.route_id}`);
+    const labels = desc.split(',').map((s) => s.trim()).filter(Boolean);
+    if (labels.length === 0) continue;
+    for (const label of labels) {
+      const cat = byLabel.get(label);
+      if (!cat) continue; // route_desc isn't a known label — shouldn't happen
+      networkUsage.set(cat.id, (networkUsage.get(cat.id) ?? 0) + 1);
+      routeNetworkRows.push(`${cat.id},${r.route_id}`);
+    }
   }
 
   // Only emit network rows that are actually used — keeps the file lean.

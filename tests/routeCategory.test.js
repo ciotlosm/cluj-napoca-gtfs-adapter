@@ -10,117 +10,145 @@ import {
 } from '../src/assemble/merge/routeCategory.js';
 
 describe('classifyRoute — pattern → category', () => {
+  // classifyRoute returns an array (1:many) — empty for regular urban.
+
   it('classifies TE-prefixed school buses as "Transport Elevi"', () => {
     expect(classifyRoute({ route_short_name: 'TE1', route_long_name: 'Transport Elevi Manastur' }))
-      .toEqual({ id: 'school', label: 'Transport Elevi' });
-    expect(classifyRoute({ route_short_name: 'TE14' })).toEqual({ id: 'school', label: 'Transport Elevi' });
-    expect(classifyRoute({ route_short_name: 'TE-OG' })).toEqual({ id: 'school', label: 'Transport Elevi' });
+      .toEqual([{ id: 'school', label: 'Transport Elevi' }]);
+    expect(classifyRoute({ route_short_name: 'TE14' })).toEqual([{ id: 'school', label: 'Transport Elevi' }]);
+    expect(classifyRoute({ route_short_name: 'TE-OG' })).toEqual([{ id: 'school', label: 'Transport Elevi' }]);
   });
 
   it('classifies M7x school buses whose long_name starts with "TE\\d+ Floresti" as "Transport Elevi"', () => {
-    // The M75A-M79C family is numbered with the metroline M prefix
-    // because they go to Floresti, but their long_name carries the
-    // school destination.
+    // M7x routes are 1:many — they match school (M7x prefix) AND
+    // metroline (M* prefix). Pin both categories in the result.
     expect(classifyRoute({
       route_short_name: 'M76A',
       route_long_name: 'TE2 Floresti str. Somesului',
-    })).toEqual({ id: 'school', label: 'Transport Elevi' });
+    })).toEqual([
+      { id: 'school', label: 'Transport Elevi' },
+      { id: 'metroline', label: 'Metropolitana' },
+    ]);
     expect(classifyRoute({
       route_short_name: 'M75B',
       route_long_name: 'TE1F',
-    })).toEqual({ id: 'school', label: 'Transport Elevi' });
+    })).toEqual([
+      { id: 'school', label: 'Transport Elevi' },
+      { id: 'metroline', label: 'Metropolitana' },
+    ]);
   });
 
   it('catches "Elevi" substring case-insensitively across all 3 fields', () => {
-    // Defensive: any route CTP names with "Elevi" anywhere counts as a
-    // school bus — covers operator-named variants we haven't seen.
     expect(classifyRoute({ route_short_name: 'X1', route_long_name: 'Some elevi variant' }))
-      .toEqual({ id: 'school', label: 'Transport Elevi' });
+      .toEqual([{ id: 'school', label: 'Transport Elevi' }]);
     expect(classifyRoute({ route_short_name: 'X2', route_long_name: '', route_desc: 'Elevi route' }))
-      .toEqual({ id: 'school', label: 'Transport Elevi' });
+      .toEqual([{ id: 'school', label: 'Transport Elevi' }]);
     expect(classifyRoute({ route_short_name: 'ELEVI-99', route_long_name: '' }))
-      .toEqual({ id: 'school', label: 'Transport Elevi' });
+      .toEqual([{ id: 'school', label: 'Transport Elevi' }]);
   });
 
   it('classifies *U suffix + "(untold)" annotation as "Untold"', () => {
     expect(classifyRoute({ route_short_name: '30U', route_long_name: 'Grigorescu - IRA' }))
-      .toEqual({ id: 'festival', label: 'Untold' });
+      .toEqual([{ id: 'festival', label: 'Untold' }]);
+    // M26U is also metroline (M* prefix) → 1:many.
     expect(classifyRoute({
       route_short_name: 'M26U',
       route_long_name: 'Uzinei Electrice - Floresti / Cetate (untold)',
-    })).toEqual({ id: 'festival', label: 'Untold' });
-    // After cleanup, "(untold)" is gone — pattern must still match via
-    // the "untold" substring (no parens).
+    })).toEqual([
+      { id: 'festival', label: 'Untold' },
+      { id: 'metroline', label: 'Metropolitana' },
+    ]);
     expect(classifyRoute({ route_short_name: '30U', route_long_name: 'Grigorescu - IRA Untold' }))
-      .toEqual({ id: 'festival', label: 'Untold' });
-    // "Untold" in route_desc (Tranzy's pre-classification value).
+      .toEqual([{ id: 'festival', label: 'Untold' }]);
     expect(classifyRoute({ route_short_name: '99', route_long_name: '', route_desc: 'Untold festival' }))
-      .toEqual({ id: 'festival', label: 'Untold' });
+      .toEqual([{ id: 'festival', label: 'Untold' }]);
   });
 
   it('classifies *N suffix + "Noapte" long_name as "Noapte"', () => {
     expect(classifyRoute({ route_short_name: '25N', route_long_name: 'Str. Bucium - Str. Unirii' }))
-      .toEqual({ id: 'night', label: 'Noapte' });
+      .toEqual([{ id: 'night', label: 'Noapte' }]);
     expect(classifyRoute({ route_short_name: '5N', route_long_name: 'Noapte Traian Vuia' }))
-      .toEqual({ id: 'night', label: 'Noapte' });
+      .toEqual([{ id: 'night', label: 'Noapte' }]);
     expect(classifyRoute({ route_short_name: '99', route_long_name: '', route_desc: 'Noapte special' }))
-      .toEqual({ id: 'night', label: 'Noapte' });
+      .toEqual([{ id: 'night', label: 'Noapte' }]);
   });
 
   it('classifies A1 / Aeroport long_name as "Aeroport Express"', () => {
     expect(classifyRoute({ route_short_name: 'A1', route_long_name: 'Piata Mihai Viteazu - Aeroport' }))
-      .toEqual({ id: 'airport', label: 'Aeroport Express' });
+      .toEqual([{ id: 'airport', label: 'Aeroport Express' }]);
     expect(classifyRoute({ route_short_name: '99', route_long_name: 'Some Route Aeroport Express' }))
-      .toEqual({ id: 'airport', label: 'Aeroport Express' });
+      .toEqual([{ id: 'airport', label: 'Aeroport Express' }]);
     expect(classifyRoute({ route_short_name: '99', route_long_name: '', route_desc: 'aeroport shuttle' }))
-      .toEqual({ id: 'airport', label: 'Aeroport Express' });
+      .toEqual([{ id: 'airport', label: 'Aeroport Express' }]);
   });
 
   it('does NOT classify D51 as commuter (D51 is employee-only / convention, not public commuter)', () => {
-    // Per ctpcj.ro: D51 is "linie de transport dedicată exclusiv angajaților
-    // (personalului navigant și tehnic) sau curselor de tip
-    // „Divertisment/Convenție”". It's not a public commuter rail pattern.
-    // The category was removed; D51 should fall through as regular urban.
-    expect(classifyRoute({ route_short_name: 'D51', route_long_name: 'D51' })).toBeNull();
-    expect(classifyRoute({ route_short_name: 'D99', route_long_name: 'Anywhere' })).toBeNull();
+    expect(classifyRoute({ route_short_name: 'D51', route_long_name: 'D51' })).toEqual([]);
+    expect(classifyRoute({ route_short_name: 'D99', route_long_name: 'Anywhere' })).toEqual([]);
   });
 
   it('classifies M* (non-school) as "Metropolitana"', () => {
     expect(classifyRoute({ route_short_name: 'M11', route_long_name: 'P-ta Cipariu - Feleacu' }))
-      .toEqual({ id: 'metroline', label: 'Metropolitana' });
+      .toEqual([{ id: 'metroline', label: 'Metropolitana' }]);
     expect(classifyRoute({ route_short_name: 'M26', route_long_name: 'Floresti - Cluj Napoca' }))
-      .toEqual({ id: 'metroline', label: 'Metropolitana' });
+      .toEqual([{ id: 'metroline', label: 'Metropolitana' }]);
   });
 
   it('classifies CS as "Cursa Speciala"', () => {
     expect(classifyRoute({ route_short_name: 'CS', route_long_name: 'CURSA SPECIALA' }))
-      .toEqual({ id: 'special', label: 'Cursa Speciala' });
+      .toEqual([{ id: 'special', label: 'Cursa Speciala' }]);
     expect(classifyRoute({ route_short_name: 'CS', route_long_name: '', route_desc: 'CURSA SPECIALA' }))
-      .toEqual({ id: 'special', label: 'Cursa Speciala' });
+      .toEqual([{ id: 'special', label: 'Cursa Speciala' }]);
   });
 
-  it('returns null for regular urban routes that match no category', () => {
-    expect(classifyRoute({ route_short_name: '1', route_long_name: 'Str. Bucium - P-ta 1 Mai' }))
-      .toBeNull();
-    expect(classifyRoute({ route_short_name: '24', route_long_name: 'Str. Unirii - Str. Bucium' }))
-      .toBeNull();
-    expect(classifyRoute({ route_short_name: '101', route_long_name: 'Tram line 101' }))
-      .toBeNull();
-  });
-
-  it('respects priority order (most-specific wins)', () => {
-    // Pin the documented priority: special → school → festival → night →
-    // airport → metropolitana. Bumping a category earlier changes
-    // behavior for routes that match multiple patterns, so this is a
-    // public contract.
-    expect(CATEGORIES.map((c) => c.id)).toEqual([
-      'special', 'school', 'festival', 'night', 'airport', 'metroline',
+  it('returns 1:many for routes that match multiple categories (M76A = school + metroline)', () => {
+    // The signature case: M76A is a Floresti metroline (M* prefix) that
+    // happens to also be a school bus (long_name starts with TE\d+
+    // Floresti). Both categories apply; classification returns both.
+    const result = classifyRoute({
+      route_short_name: 'M76A',
+      route_long_name: 'TE2 Floresti str. Somesului - Liceul D. Tautan',
+    });
+    expect(result).toEqual([
+      { id: 'school', label: 'Transport Elevi' },
+      { id: 'metroline', label: 'Metropolitana' },
+    ]);
+    // Same for any M7x school bus.
+    expect(classifyRoute({
+      route_short_name: 'M75A',
+      route_long_name: 'TE1 Floresti str. Avram Iancu',
+    })).toEqual([
+      { id: 'school', label: 'Transport Elevi' },
+      { id: 'metroline', label: 'Metropolitana' },
     ]);
   });
 
-  it('treats missing/undefined short_name and long_name as empty strings', () => {
+  it('returns empty array for regular urban routes that match no category', () => {
+    expect(classifyRoute({ route_short_name: '1', route_long_name: 'Str. Bucium - P-ta 1 Mai' }))
+      .toEqual([]);
+    expect(classifyRoute({ route_short_name: '24', route_long_name: 'Str. Unirii - Str. Bucium' }))
+      .toEqual([]);
+    expect(classifyRoute({ route_short_name: '101', route_long_name: 'Tram line 101' }))
+      .toEqual([]);
+  });
+
+  it('respects priority order (matches in CATEGORIES order)', () => {
+    // 1:many results preserve CATEGORIES declaration order.
+    expect(CATEGORIES.map((c) => c.id)).toEqual([
+      'special', 'school', 'festival', 'night', 'airport', 'metroline',
+    ]);
+    // For M76A (school + metroline), school comes first because it's
+    // declared earlier in CATEGORIES.
+    const result = classifyRoute({
+      route_short_name: 'M76A',
+      route_long_name: 'TE2 Floresti ...',
+    });
+    expect(result.map((c) => c.id)).toEqual(['school', 'metroline']);
+  });
+
+  it('treats missing/undefined fields as empty strings', () => {
     expect(() => classifyRoute({})).not.toThrow();
-    expect(classifyRoute({})).toBeNull();
+    expect(classifyRoute({})).toEqual([]);
   });
 });
 
@@ -271,17 +299,49 @@ describe('applyRouteCategory — orchestrator entry point', () => {
     return { routes, allStopTimeRows, tripToRoute };
   }
 
-  it('cleans long_name, classifies, and mutates route_desc', () => {
+  it('cleans long_name, classifies (1:many), and mutates route_desc with comma-separated labels', () => {
     const { routes, allStopTimeRows, tripToRoute } = setup();
     const warnings = [];
     const result = applyRouteCategory({
       routes, allStopTimeRows, tripToRoute, stopsByStopId, warnings,
     });
     expect(result.classifiedCount).toBe(1); // TE1 only
+    expect(result.multiNetworkCount).toBe(0);
     expect(routes[0].route_long_name).toBe('Manastur');
     expect(routes[0].route_desc).toBe('Transport Elevi');
     expect(routes[1].route_long_name).toBe('Str. Bucium - P-ta 1 Mai');
     expect(routes[1].route_desc).toBe(''); // regular urban
+  });
+
+  it('classifies BEFORE cleanup, so M76A gets both school + metroline', () => {
+    // The signature case for 1:many. If classification ran AFTER cleanup
+    // (which strips "TE2 Floresti " from long_name), the school signal
+    // would be lost. Order matters.
+    const allStopTimeRows = [
+      { trip_id: 't-145', stop_id: 'A', stop_sequence: 0 },
+      { trip_id: 't-145', stop_id: 'B', stop_sequence: 1 },
+    ];
+    const tripToRoute = new Map([['t-145', '145']]);
+    const routes = [
+      {
+        route_id: '145',
+        route_short_name: 'M76A',
+        route_long_name: 'TE2 Floresti str. Somesului - Liceul D. Tautan',
+        route_desc: '',
+      },
+    ];
+    const warnings = [];
+    const result = applyRouteCategory({
+      routes, allStopTimeRows, tripToRoute, stopsByStopId, warnings,
+    });
+    expect(result.classifiedCount).toBe(1); // 1 route
+    expect(result.multiNetworkCount).toBe(1); // with 2 networks
+    // route_desc is comma-separated in CATEGORIES order: school first,
+    // metroline second.
+    expect(routes[0].route_desc).toBe('Transport Elevi, Metropolitana');
+    // long_name is cleaned AFTER classification (signal preserved for the
+    // school-pattern check).
+    expect(routes[0].route_long_name).toBe('str. Somesului - Liceul D. Tautan');
   });
 
   it('falls back to stop_times when long_name is empty after cleanup', () => {
@@ -335,7 +395,7 @@ describe('applyRouteCategory — orchestrator entry point', () => {
     expect(routes[0].route_long_name).toBe('');
   });
 
-  it('emits an INFO warning summarizing classified / cleaned / derived counts', () => {
+  it('emits an INFO warning summarizing classified / cleaned / derived / multi-network counts', () => {
     const { routes, allStopTimeRows, tripToRoute } = setup();
     const warnings = [];
     applyRouteCategory({
@@ -343,8 +403,23 @@ describe('applyRouteCategory — orchestrator entry point', () => {
     });
     const info = warnings.find((w) => w.severity === 'info' && w.message.includes('classified'));
     expect(info).toBeDefined();
-    expect(info.message).toMatch(/classified 1/);
+    expect(info.message).toMatch(/classified 1 route\(s\)/);
     expect(info.message).toMatch(/cleaned 1/);
+  });
+
+  it('emits multi-network count in INFO when 1:many cases fire', () => {
+    const allStopTimeRows = [];
+    const tripToRoute = new Map();
+    const routes = [
+      { route_id: '145', route_short_name: 'M76A', route_long_name: 'TE2 Floresti ...', route_desc: '' },
+      { route_id: '146', route_short_name: 'M77A', route_long_name: 'TE3 Floresti ...', route_desc: '' },
+    ];
+    const warnings = [];
+    applyRouteCategory({
+      routes, allStopTimeRows, tripToRoute, stopsByStopId, warnings,
+    });
+    const info = warnings.find((w) => w.severity === 'info');
+    expect(info.message).toMatch(/2 with multiple networks/);
   });
 
   it('does not emit a warning when nothing changes', () => {
